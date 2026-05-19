@@ -400,13 +400,21 @@
             <button class="seg-btn" id="ved-dir-left" onclick="vedSetAngDir('left',this)">Левые (β_лев)</button>
           </div>
         </div>
-        <div class="field-row">
-          <div class="field"><label>X кон (м)</label><input type="number" id="ved-xn" value="1200.00" step="0.01"></div>
-          <div class="field"><label>Y кон (м)</label><input type="number" id="ved-yn" value="1200.00" step="0.01"></div>
-        </div>
-        <div class="field">
+        <label class="check-toggle">
+          <input type="checkbox" id="ved-has-an" checked onchange="vedToggleEndFields()">
+          <span>Конечный дирекционный угол α_кон известен</span>
+        </label>
+        <div id="ved-an-wrap" class="field" style="margin-top:6px">
           <label>α кон (ГГ ММ СС)</label>
           <input type="text" id="ved-an" value="80 30 00">
+        </div>
+        <label class="check-toggle" style="margin-top:10px">
+          <input type="checkbox" id="ved-has-end-xy" checked onchange="vedToggleEndFields()">
+          <span>Конечные координаты X_кон, Y_кон известны</span>
+        </label>
+        <div id="ved-end-xy-wrap" class="field-row" style="margin-top:6px">
+          <div class="field"><label>X кон (м)</label><input type="number" id="ved-xn" value="1200.00" step="0.01"></div>
+          <div class="field"><label>Y кон (м)</label><input type="number" id="ved-yn" value="1200.00" step="0.01"></div>
         </div>
       </div>
       <div class="field">

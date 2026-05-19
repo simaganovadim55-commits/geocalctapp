@@ -633,6 +633,13 @@ function vedCalcAlpha() {
   haptic('light');
 }
 
+function vedToggleEndFields() {
+  const hasAn  = document.getElementById('ved-has-an').checked;
+  const hasXY  = document.getElementById('ved-has-end-xy').checked;
+  document.getElementById('ved-an-wrap').classList.toggle('ved-disabled', !hasAn);
+  document.getElementById('ved-end-xy-wrap').classList.toggle('ved-disabled', !hasXY);
+}
+
 function vedToggleType() {
   const t = document.getElementById('ved-type').value;
   document.getElementById('ved-open-fields').style.display = t==='open' ? 'block' : 'none';
@@ -711,28 +718,41 @@ function calcVed() {
   // Направление углов: для замкнутого — всегда правые; для разомкнутого — по переключателю
   const angDir = type === 'open' ? vedAngDir : 'right';
 
+  // Флаги наличия опорных конечных данных (только для разомкнутого хода)
+  const hasAngle  = type === 'closed' || document.getElementById('ved-has-an').checked;
+  const hasEndXY  = type === 'closed' || document.getElementById('ved-has-end-xy').checked;
+
   // Теоретическая сумма — ближайшее к измеренной
-  let bTheor, anDeg = NaN;
+  let bTheor = NaN, anDeg = NaN;
+  let fBetaDeg = 0, fBetaSec = 0, fBetaMin = 0;
+  let angOk = null, dBetaDeg = 0, dBetaSec = 0;
+
   if (type === 'closed') {
     const k = Math.round((bSum - n*180) / 360);
     bTheor = n*180 + k*360;
-  } else {
+    fBetaDeg = bSum - bTheor;
+    fBetaSec = fBetaDeg * 3600;
+    fBetaMin = fBetaDeg * 60;
+    angOk = Math.abs(fBetaMin) <= Math.sqrt(n);
+    dBetaDeg = -fBetaDeg / n;
+    dBetaSec = dBetaDeg * 3600;
+  } else if (hasAngle) {
     anDeg = parseDeg(document.getElementById('ved-an').value);
     if (isNaN(anDeg)) { alert('Некорректный конечный дирекционный угол'); return; }
     // Правые: Σβ = α₀ − αₙ + n·180°; Левые: Σβ = αₙ − α₀ + n·180°
     const base = angDir === 'right' ? (a0 - anDeg + n*180) : (anDeg - a0 + n*180);
     const k = Math.round((bSum - base) / 360);
     bTheor = base + k*360;
+    fBetaDeg = bSum - bTheor;
+    fBetaSec = fBetaDeg * 3600;
+    fBetaMin = fBetaDeg * 60;
+    angOk = Math.abs(fBetaMin) <= Math.sqrt(n);
+    dBetaDeg = -fBetaDeg / n;
+    dBetaSec = dBetaDeg * 3600;
   }
+  // Если hasAngle=false — поправки нулевые, угловая увязка не выполняется
 
-  const fBetaDeg = bSum - bTheor;
-  const fBetaSec = fBetaDeg * 3600;
-  const fBetaMin = fBetaDeg * 60;
   const fdopMin  = Math.sqrt(n);
-  const angOk    = Math.abs(fBetaMin) <= fdopMin;
-
-  const dBetaDeg = -fBetaDeg / n;
-  const dBetaSec = dBetaDeg * 3600;
   const adjAng   = ang.map(b => b + dBetaDeg);
   // dirOff=1 для разомкнутого: α₀ — исходное направление (засечка), первая сторона — alphas[1]
   const dirOff   = type === 'open' ? 1 : 0;
@@ -750,20 +770,23 @@ function calcVed() {
   const dY = sid.map((d,i) => d * Math.sin(alphas[i+dirOff]*R));
   const sumD = sid.reduce((a,b) => a+b, 0);
 
-  let fx, fy;
+  if (!sumD || !isFinite(sumD)) { alert('Сумма сторон должна быть положительной'); return; }
+
+  let fx = 0, fy = 0;
   if (type === 'closed') {
     fx = dX.reduce((a,b) => a+b, 0);
     fy = dY.reduce((a,b) => a+b, 0);
-  } else {
+  } else if (hasEndXY) {
     const xn = +document.getElementById('ved-xn').value;
     const yn = +document.getElementById('ved-yn').value;
-    fx = dX.reduce((a,b) => a+b, 0) - (xn-x0);
-    fy = dY.reduce((a,b) => a+b, 0) - (yn-y0);
+    fx = dX.reduce((a,b) => a+b, 0) - (xn - x0);
+    fy = dY.reduce((a,b) => a+b, 0) - (yn - y0);
   }
+  // hasEndXY=false → fx=fy=0, координаты без поправки
+
   const fs = Math.sqrt(fx*fx + fy*fy);
-  if (!sumD || !isFinite(sumD)) { alert('Сумма сторон должна быть положительной'); return; }
   const T = fs / sumD;
-  const linOk = T < 1/1000;
+  const linOk = hasEndXY || type === 'closed' ? T < 1/1000 : null;
 
   const vx = sid.map(d => -fx*d/sumD);
   const vy = sid.map(d => -fy*d/sumD);
@@ -771,24 +794,31 @@ function calcVed() {
   const coords = [[x0,y0]];
   for (let i = 0; i < n; i++) coords.push([coords[i][0]+dX[i]+vx[i], coords[i][1]+dY[i]+vy[i]]);
 
+  const angKnown = angOk !== null;
+  const linKnown = linOk !== null;
+
   document.getElementById('ved-main').innerHTML =
-    ri('f_β (″)', fnSmart(fBetaSec,1), angOk?'':'r') +
+    ri('f_β (″)', angKnown ? fnSmart(fBetaSec,1) : '—', angKnown&&!angOk?'r':'') +
     ri('Допуск ±1′√n', '±'+fnSmart(fdopMin,2)+'′', 'o') +
-    ri('Угл. невязка', angOk?'✓ НОРМА':'✗ ПРЕВЫШЕН', angOk?'g':'r') +
-    ri('f_s (м)', fnSmart(fs,4), 'o') +
-    ri('1/T', isFinite(T)&&T>0 ? '1:'+Math.round(1/T) : '—', linOk?'g':'r') +
+    ri('Угл. невязка', angKnown ? (angOk?'✓ НОРМА':'✗ ПРЕВЫШЕН') : 'α_кон не задан', angKnown?(angOk?'g':'r'):'') +
+    ri('f_s (м)', linKnown ? fnSmart(fs,4) : '—', 'o') +
+    ri('1/T', linKnown&&isFinite(T)&&T>0 ? '1:'+Math.round(1/T) : (linKnown?'—':'XY_кон не заданы'), linKnown&&linOk?'g':linKnown?'r':'') +
     ri('Σ длин', fnSmart(sumD,3)+' м') +
-    ri('δβ на угол', fnSmart(dBetaSec,1)+'″', 'p') +
+    ri('δβ на угол', angKnown ? fnSmart(dBetaSec,1)+'″' : '0″ (нет увязки)', 'p') +
     ri('n точек', n);
 
   document.getElementById('ved-checks').innerHTML = `
-    <div class="check-item ${angOk?'check-pass':'check-fail'}">
-      <span class="check-icon">${angOk?'✅':'❌'}</span>
-      <div><strong>Угловая невязка</strong>f_β = ${fnSmart(fBetaSec,1)}″ | Допуск ±${fnSmart(fdopMin,2)}′ — ${angOk?'НОРМА':'ПРЕВЫШЕНА'}</div>
+    <div class="check-item ${angKnown?(angOk?'check-pass':'check-fail'):'check-neutral'}">
+      <span class="check-icon">${angKnown?(angOk?'✅':'❌'):'ℹ️'}</span>
+      <div><strong>Угловая невязка</strong>${angKnown
+        ? `f_β = ${fnSmart(fBetaSec,1)}″ | Допуск ±${fnSmart(fdopMin,2)}′ — ${angOk?'НОРМА':'ПРЕВЫШЕНА'}`
+        : 'α_кон не задан — угловая увязка не выполняется (висячий ход)'}</div>
     </div>
-    <div class="check-item ${linOk?'check-pass':'check-fail'}">
-      <span class="check-icon">${linOk?'✅':'❌'}</span>
-      <div><strong>Линейная невязка</strong>f_s = ${fnSmart(fs,4)} м | 1:${isFinite(T)&&T>0?Math.round(1/T):'∞'} — ${linOk?'НОРМА':'ПРЕВЫШЕНА'}</div>
+    <div class="check-item ${linKnown?(linOk?'check-pass':'check-fail'):'check-neutral'}">
+      <span class="check-icon">${linKnown?(linOk?'✅':'❌'):'ℹ️'}</span>
+      <div><strong>Линейная невязка</strong>${linKnown
+        ? `f_s = ${fnSmart(fs,4)} м | 1:${isFinite(T)&&T>0?Math.round(1/T):'∞'} — ${linOk?'НОРМА':'ПРЕВЫШЕНА'}`
+        : 'X_кон/Y_кон не заданы — линейная увязка не выполняется (координаты без поправки)'}</div>
     </div>`;
 
   const sdX = dX.reduce((a,b) => a+b, 0);
@@ -798,9 +828,11 @@ function calcVed() {
   const recurrTail = angDir === 'right' ? '+ 180°' : '− 180°';
   const thFormula = closedLabel
     ? `Σβ_теор = (n±k)·180°, ближайшее к Σβ_изм = <strong>${fnSmart(n)}·180 + (${Math.round((bSum-n*180)/360)})·360 = ${fnSmart(bTheor,4)}°</strong>`
-    : angDir === 'right'
-      ? `Σβ_теор = α₀ − αₙ + n·180° = ${fn(a0,4)} − ${fn(anDeg,4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`
-      : `Σβ_теор = αₙ − α₀ + n·180° = ${fn(anDeg,4)} − ${fn(a0,4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`;
+    : !hasAngle
+      ? `α_кон не задан — <strong>теоретическая сумма не вычисляется</strong>. Дирекционные углы пропагируются от α₀ без коррекции.`
+      : angDir === 'right'
+        ? `Σβ_теор = α₀ − αₙ + n·180° = ${fn(a0,4)} − ${fn(anDeg,4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`
+        : `Σβ_теор = αₙ − α₀ + n·180° = ${fn(anDeg,4)} − ${fn(a0,4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`;
 
   let dirRows = '';
   dirRows += `<div class="step"><strong>α₀ = ${fmtDeg(a0)}</strong> — ${type === 'open' ? 'дирекционный угол <u>исходного направления</u> (засечки, не стороны хода)' : 'дирекционный угол <u>первой стороны</u> (задан)'}</div>`;
