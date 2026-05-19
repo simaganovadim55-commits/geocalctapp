@@ -602,6 +602,37 @@ function buildLaplace() {
 }
 
 // ── ВЕДОМОСТЬ КООРДИНАТ ───────────────────────────────────
+let vedAngDir = 'right'; // 'right' | 'left' — только для разомкнутого хода
+
+function vedSetAngDir(dir, btn) {
+  vedAngDir = dir;
+  document.querySelectorAll('#ved-open-fields .seg-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const lbl = document.getElementById('ved-ang-label');
+  if (lbl) lbl.textContent = dir === 'left'
+    ? 'Левые углы β — каждый с новой строки'
+    : 'Правые углы β — каждый с новой строки';
+}
+
+function vedCalcAlpha() {
+  const x1 = +document.getElementById('ved-ax1').value;
+  const y1 = +document.getElementById('ved-ay1').value;
+  const x2 = +document.getElementById('ved-ax2').value;
+  const y2 = +document.getElementById('ved-ay2').value;
+  const dx = x2 - x1, dy = y2 - y1;
+  if (!isFinite(dx) || !isFinite(dy) || (dx === 0 && dy === 0)) {
+    alert('Введите координаты двух различных точек'); return;
+  }
+  let al = Math.atan2(dy, dx) * 180 / Math.PI;
+  if (al < 0) al += 360;
+  let tot = Math.round(al * 3600);
+  if (tot >= 360 * 3600) tot = 0;
+  const d = Math.floor(tot / 3600), rem = tot % 3600;
+  const m = Math.floor(rem / 60), s = rem % 60;
+  document.getElementById('ved-a0').value = `${d} ${String(m).padStart(2,'0')} ${String(s).padStart(2,'0')}`;
+  haptic('light');
+}
+
 function vedToggleType() {
   const t = document.getElementById('ved-type').value;
   document.getElementById('ved-open-fields').style.display = t==='open' ? 'block' : 'none';
@@ -609,6 +640,14 @@ function vedToggleType() {
   if (lbl) lbl.textContent = t === 'open'
     ? 'α нач — дирекц. угол исходного направления (ГГ ММ СС)'
     : 'α нач — дирекц. угол первой стороны (ГГ ММ СС)';
+  if (t === 'closed') {
+    vedAngDir = 'right';
+    const rb = document.getElementById('ved-dir-right'), lb = document.getElementById('ved-dir-left');
+    if (rb) rb.classList.add('active');
+    if (lb) lb.classList.remove('active');
+    const angLbl = document.getElementById('ved-ang-label');
+    if (angLbl) angLbl.textContent = 'Правые углы β — каждый с новой строки';
+  }
 }
 
 function parseDeg(s) {
@@ -669,15 +708,19 @@ function calcVed() {
   const n = ang.length, R = Math.PI/180;
   const bSum = ang.reduce((a,b) => a+b, 0);
 
+  // Направление углов: для замкнутого — всегда правые; для разомкнутого — по переключателю
+  const angDir = type === 'open' ? vedAngDir : 'right';
+
   // Теоретическая сумма — ближайшее к измеренной
-  let bTheor;
+  let bTheor, anDeg = NaN;
   if (type === 'closed') {
     const k = Math.round((bSum - n*180) / 360);
     bTheor = n*180 + k*360;
   } else {
-    const an = parseDeg(document.getElementById('ved-an').value);
-    if (isNaN(an)) { alert('Некорректный конечный дирекционный угол'); return; }
-    const base = a0 - an + n*180;
+    anDeg = parseDeg(document.getElementById('ved-an').value);
+    if (isNaN(anDeg)) { alert('Некорректный конечный дирекционный угол'); return; }
+    // Правые: Σβ = α₀ − αₙ + n·180°; Левые: Σβ = αₙ − α₀ + n·180°
+    const base = angDir === 'right' ? (a0 - anDeg + n*180) : (anDeg - a0 + n*180);
     const k = Math.round((bSum - base) / 360);
     bTheor = base + k*360;
   }
@@ -691,11 +734,17 @@ function calcVed() {
   const dBetaDeg = -fBetaDeg / n;
   const dBetaSec = dBetaDeg * 3600;
   const adjAng   = ang.map(b => b + dBetaDeg);
-  // dirOff=1 для разомкнутого: α₀ — исходное направление (засечка), первая сторона использует alphas[1]
+  // dirOff=1 для разомкнутого: α₀ — исходное направление (засечка), первая сторона — alphas[1]
   const dirOff   = type === 'open' ? 1 : 0;
 
+  // Рекуррентная формула: правые α_{i+1} = α_i − β + 180°; левые α_{i+1} = α_i + β − 180°
   const alphas = [a0];
-  for (let i = 0; i < n; i++) alphas.push(norm360(alphas[alphas.length-1] - adjAng[i] + 180));
+  for (let i = 0; i < n; i++) {
+    const prev = alphas[alphas.length - 1];
+    alphas.push(angDir === 'right'
+      ? norm360(prev - adjAng[i] + 180)
+      : norm360(prev + adjAng[i] - 180));
+  }
 
   const dX = sid.map((d,i) => d * Math.cos(alphas[i+dirOff]*R));
   const dY = sid.map((d,i) => d * Math.sin(alphas[i+dirOff]*R));
@@ -745,15 +794,19 @@ function calcVed() {
   const sdX = dX.reduce((a,b) => a+b, 0);
   const sdY = dY.reduce((a,b) => a+b, 0);
   const closedLabel = (type === 'closed');
+  const recurrSign = angDir === 'right' ? '−' : '+';
+  const recurrTail = angDir === 'right' ? '+ 180°' : '− 180°';
   const thFormula = closedLabel
     ? `Σβ_теор = (n±k)·180°, ближайшее к Σβ_изм = <strong>${fnSmart(n)}·180 + (${Math.round((bSum-n*180)/360)})·360 = ${fnSmart(bTheor,4)}°</strong>`
-    : `Σβ_теор = α₀ − αₙ + n·180° = ${fn(parseDeg(document.getElementById('ved-a0').value),4)} − ${fn(parseDeg(document.getElementById('ved-an').value),4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`;
+    : angDir === 'right'
+      ? `Σβ_теор = α₀ − αₙ + n·180° = ${fn(a0,4)} − ${fn(anDeg,4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`
+      : `Σβ_теор = αₙ − α₀ + n·180° = ${fn(anDeg,4)} − ${fn(a0,4)} + ${n}·180 ≈ <strong>${fnSmart(bTheor,4)}°</strong>`;
 
   let dirRows = '';
   dirRows += `<div class="step"><strong>α₀ = ${fmtDeg(a0)}</strong> — ${type === 'open' ? 'дирекционный угол <u>исходного направления</u> (засечки, не стороны хода)' : 'дирекционный угол <u>первой стороны</u> (задан)'}</div>`;
   for (let i = 0; i < n; i++) {
-    dirRows += `<div class="step"><strong>α${i+1} = α${i} − β${i+1}(испр.) + 180°</strong>
-      <div class="step-f">${fmtDeg(alphas[i])} − ${fmtDegR(adjAng[i])} + 180° = <strong>${fmtDeg(alphas[i+1])}</strong>${i===n-1?(closedLabel?' ← должно = α₀':''):''}</div></div>`;
+    dirRows += `<div class="step"><strong>α${i+1} = α${i} ${recurrSign} β${i+1}(испр.) ${recurrTail}</strong>
+      <div class="step-f">${fmtDeg(alphas[i])} ${recurrSign} ${fmtDegR(adjAng[i])} ${recurrTail} = <strong>${fmtDeg(alphas[i+1])}</strong>${i===n-1?(closedLabel?' ← должно = α₀':''):''}</div></div>`;
   }
 
   let bowRows = '';
@@ -778,7 +831,11 @@ function calcVed() {
         <div class="ar-annot-item">
           <strong>Теоретическая сумма</strong>
           <div class="ar-annot-f">${thFormula}</div>
-          <div class="ar-annot-why">${closedLabel?'Для замкнутого хода выбираем значение n·180°±k·360°, ближайшее к Σβ_изм. Для стандартных правых углов (~90°–180°) обычно k = −1 при n·180° > Σβ_изм.':'Для разомкнутого: формула через начальный и конечный дирекционные углы.'}</div>
+          <div class="ar-annot-why">${closedLabel
+            ? 'Для замкнутого хода выбираем n·180°±k·360°, ближайшее к Σβ_изм. Для правых внутренних углов k = −1, давая (n−2)·180°.'
+            : angDir === 'right'
+              ? 'Правые углы (разомкнутый): Σβ_пр = α₀ − αₙ + n·180°. Формула выводится из рекуррентного соотношения α_{i+1} = α_i − β + 180°.'
+              : 'Левые углы (разомкнутый): Σβ_лев = αₙ − α₀ + n·180°. Формула выводится из рекуррентного соотношения α_{i+1} = α_i + β − 180°.'}</div>
         </div>
         <div class="ar-annot-item">
           <strong>Угловая невязка</strong>
@@ -803,8 +860,12 @@ function calcVed() {
       <div class="ar-annot-list">
         <div class="ar-annot-item">
           <strong>Формула пересчёта</strong>
-          <div class="ar-annot-f">α_{i+1} = α_i − β_{испр} + 180°</div>
-          <div class="ar-annot-why">Каждый дирекционный угол следующей стороны = предыдущий минус исправленный угол плюс 180°. Результат нормализуем в [0°, 360°). Для замкнутого хода α_n должно совпасть с α₀.</div>
+          <div class="ar-annot-f">${angDir === 'right'
+            ? 'α_{i+1} = α_i − β_{испр} + 180° (правые углы)'
+            : 'α_{i+1} = α_i + β_{испр} − 180° (левые углы)'}</div>
+          <div class="ar-annot-why">${angDir === 'right'
+            ? 'Правые углы: от предыдущего дирекционного угла вычитаем исправленный угол и добавляем 180°. Результат нормализуем в [0°, 360°).'
+            : 'Левые углы: к предыдущему дирекционному углу прибавляем исправленный угол и вычитаем 180°. Результат нормализуем в [0°, 360°).'}</div>
         </div>
         <div class="steps" style="margin-top:8px">${dirRows}</div>
       </div>
