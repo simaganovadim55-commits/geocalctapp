@@ -28,7 +28,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN  = os.getenv("BOT_TOKEN", "8944337740:AAGMAcUzqDhpGLA2eI3ZufkaPvQ1C_ZTMqc")
-WEB_APP_URL = os.getenv("WEB_APP_URL", "https://ВАШ-ЛОГИН.github.io/ВАШ-РЕПО/")
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://simaganovadim55-commits.github.io/geocalctapp/")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -51,6 +51,22 @@ async def set_menu_button(app: Application) -> None:
     """Установить кнопку меню (круглая кнопка в чате) → Web App."""
     await app.bot.set_chat_menu_button(
         menu_button=MenuButtonWebApp(text="GeoCalc", web_app=WebAppInfo(url=WEB_APP_URL))
+    )
+
+
+async def help_cmd(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        "📐 *GeoCalculator — разделы:*\n\n"
+        "• *Угловые невязки* — СКП, Бессель, предельная погрешность\n"
+        "• *Нивелирный ход* — невязка f\\_h, допуск, уравнивание\n"
+        "• *Теодолитный ход* — f\\_β, f\\_s, координаты\n"
+        "• *Ведомость координат* — замкнутый / разомкнутый ход\n"
+        "• *Прямая задача* — X₂, Y₂ по α и d\n"
+        "• *Обратная задача* — α и d по координатам\n"
+        "• *Взвешенные* — средневзвешенное, μ, m\\_x̄\n"
+        "• *Таблица Лапласа* — Φ(x) для нормального распределения\n\n"
+        "Нажмите кнопку *GeoCalc* внизу чата, чтобы открыть.",
+        parse_mode="Markdown"
     )
 
 
@@ -120,8 +136,10 @@ async def handle_web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE
 def main() -> None:
     app = Application.builder().token(BOT_TOKEN).post_init(set_menu_button).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_web_app_data))
     app.run_polling()
+
 
 
 if __name__ == "__main__":
