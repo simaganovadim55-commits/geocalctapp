@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GeoCalculator — Геодезия</title>
+<!--
+  ╔══════════════════════════════════════════════════════════╗
+  ║  TELEGRAM WEB APP                                        ║
+  ║  Этот скрипт ОБЯЗАТЕЛЕН для работы внутри Telegram.      ║
+  ║  При открытии в браузере — работает как обычное PWA.      ║
+  ╚══════════════════════════════════════════════════════════╝
+-->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-gem">
+      <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L21.5 7.5V16.5L12 22L2.5 16.5V7.5Z"/>
+        <line x1="2.5" y1="7.5" x2="21.5" y2="7.5" opacity=".4"/>
+        <line x1="12" y1="2" x2="12" y2="22" opacity=".25"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-name">Geo<span>Calculator</span></div>
+      <div class="logo-sub">ГЕОДЕЗИЯ</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="header-user" id="tg-username"></span>
+    <div class="header-pill">v4.0</div>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- ═══════ PAGE: НЕВЯЗКИ ═══════ -->
+  <div class="page active" id="page-residuals">
+    <div class="page-head">
+      <div class="page-title">Угловые <em>невязки</em></div>
+      <div class="page-desc">СКП, оценка точности, предельная погрешность</div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Данные</div>
+        <div class="seg-ctrl">
+          <button class="seg-btn active" id="ar-tab-dms" onclick="switchArMode('dms',this)">Град</button>
+          <button class="seg-btn" id="ar-tab-m" onclick="switchArMode('m',this)">Метры</button>
+        </div>
+      </div>
+      <div class="tab-pane active" id="ar-pane-dms">
+        <details class="help-section">
+          <summary>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Справка по формату ввода
+            <svg class="help-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </summary>
+          <div class="info"><strong>Углы:</strong> <strong>запятая</strong> — разделитель измерений. Минус обычный или типографский (−) — программа нормализует. Внутри фрагмента пишите градусы с пробелами: <strong>1 30 45</strong> = 1°30′45″. Одно число = секунды; три числа через пробел = °′″. Дробная часть — точка. Не менее 2 измерений.</div>
+        </details>
+        <div class="field">
+          <label>Невязки (сек или ° ′ ″)</label>
+          <textarea id="ar-input-dms" placeholder="1.02, -1.88, 0.41, 1 30 0, 0 0 1.5"></textarea>
+        </div>
+      </div>
+      <div class="tab-pane" id="ar-pane-m">
+        <details class="help-section">
+          <summary>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            Справка по формату ввода
+            <svg class="help-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </summary>
+          <div class="info"><strong>Метры:</strong> линейные невязки в <strong>метрах</strong> (м). Разделители — пробел или запятая; дробная часть — точка (1.09, 2.3). Не менее 2 значений.</div>
+        </details>
+        <div class="field">
+          <label>Невязки (м)</label>
+          <textarea id="ar-input-m" placeholder="0.002 -0.001 0.003 0.001 -0.002"></textarea>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="calcAR()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Рассчитать
+        </button>
+        <button class="btn btn-outline" onclick="arExample()">Пример</button>
+      </div>
+    </div>
+    <div class="result hidden" id="ar-result">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('ar',0,this)">Формула Бесселя</button>
+        <button class="tab-btn" onclick="switchTab('ar',1,this)">СКП Серии</button>
+        <button class="tab-btn" onclick="switchTab('ar',2,this)">Свойства</button>
+        <button class="tab-btn" onclick="switchTab('ar',3,this)">График</button>
+      </div>
+      <div class="tab-pane active" id="ar-t0">
+        <div class="result-grid" id="ar-main"></div>
+        <div id="ar-annot-wrap" class="ar-annot-wrap"></div>
+        <div class="result-sep"></div>
+        <div class="steps" id="ar-steps"></div>
+      </div>
+      <div class="tab-pane" id="ar-t1">
+        <div class="result-grid" id="ar-conspect-main"></div>
+        <div id="ar-conspect-annot" class="ar-annot-wrap"></div>
+        <div class="result-sep"></div>
+        <div id="ar-conspect" class="ar-conspect"></div>
+      </div>
+      <div class="tab-pane" id="ar-t2"><div class="check-list" id="ar-checks"></div></div>
+      <div class="tab-pane" id="ar-t3"><div id="ar-hist"></div></div>
+    </div>
+  </div>
+
+  <!-- ═══════ PAGE: НИВЕЛИРОВКА ═══════ -->
+  <div class="page" id="page-leveling">
+    <div class="page-head">
+      <div class="page-title">Нивелирный <em>ход</em></div>
+      <div class="page-desc">Невязка, допуск, уравнивание</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">⊟</span>Параметры</div>
+      <div class="info"><strong>Подсказка:</strong> H_A и H_B — в метрах. Превышения h_i и длины d_i — с новой строки; разделители между числами в строке: пробел или запятая; дробная часть — точка.</div>
+      <div class="field-row">
+        <div class="field"><label>H_A (м)</label><input type="number" id="lev-ha" value="100.000" step="0.001"></div>
+        <div class="field"><label>H_B (м)</label><input type="number" id="lev-hb" value="98.325" step="0.001"></div>
+      </div>
+      <div class="field">
+        <label>Класс нивелирования</label>
+        <select id="lev-cls">
+          <option value="3">III класс — 5√L мм</option>
+          <option value="4" selected>IV класс — 10√L мм</option>
+          <option value="t">Технич. — 50√L мм</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Превышения h_i (м) — каждое с новой строки</label>
+        <textarea id="lev-h" placeholder="-0.312&#10;+0.548&#10;-0.271&#10;+0.390&#10;-0.030"></textarea>
+      </div>
+      <div class="field">
+        <label>Длины секций d_i (км) — каждая с новой строки</label>
+        <textarea id="lev-d" placeholder="1.2&#10;0.8&#10;1.5&#10;1.1&#10;0.9" style="min-height:72px"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="calcLev()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Рассчитать
+      </button>
+    </div>
+    <div class="result hidden" id="lev-result">
+      <div class="result-grid" id="lev-main"></div>
+      <div class="result-sep"></div>
+      <div class="tbl-wrap" id="lev-tbl"></div>
+    </div>
+  </div>
+
+  <!-- ═══════ PAGE: ТЕОДОЛИТ ═══════ -->
+  <div class="page" id="page-theodolite">
+    <div class="page-head">
+      <div class="page-title">Теодолитный <em>ход</em></div>
+      <div class="page-desc">Угловая и линейная невязки, координаты</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">∠</span>Опорные данные</div>
+      <div class="info"><strong>Подсказка:</strong> Углы β — правые, в градусах. Разделители — пробел или запятая; дробная часть — точка. Углы и стороны — по одному на строку, в порядке хода.</div>
+      <div class="field-row">
+        <div class="field"><label>α нач (°)</label><input type="number" id="th-a0" value="62.5" step="0.01"></div>
+        <div class="field"><label>α кон (°)</label><input type="number" id="th-an" value="124.75" step="0.01"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>X нач (м)</label><input type="number" id="th-x0" value="1000.00" step="0.01"></div>
+        <div class="field"><label>Y нач (м)</label><input type="number" id="th-y0" value="1000.00" step="0.01"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>X кон (м)</label><input type="number" id="th-xn" value="1248.55" step="0.01"></div>
+        <div class="field"><label>Y кон (м)</label><input type="number" id="th-yn" value="1352.80" step="0.01"></div>
+      </div>
+      <div class="field">
+        <label>Правые углы β (°) — каждый с новой строки</label>
+        <textarea id="th-ang" placeholder="178.32&#10;182.15&#10;175.48&#10;186.70&#10;177.90"></textarea>
+      </div>
+      <div class="field">
+        <label>Стороны d (м) — каждая с новой строки</label>
+        <textarea id="th-sides" placeholder="125.40&#10;98.70&#10;143.20&#10;87.50&#10;112.80" style="min-height:72px"></textarea>
+      </div>
+      <button class="btn btn-primary" onclick="calcTh()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Рассчитать
+      </button>
+    </div>
+    <div class="result hidden" id="th-result">
+      <div class="result-grid" id="th-main"></div>
+      <div class="result-sep"></div>
+      <div class="tbl-wrap" id="th-tbl"></div>
+    </div>
+  </div>
+
+  <!-- ═══════ PAGE: ЗАДАЧИ ═══════ -->
+  <div class="page" id="page-tasks">
+    <div class="page-head">
+      <div class="page-title"><em>Геодезические</em> задачи</div>
+      <div class="page-desc">Прямая, обратная, вероятности, взвешенные</div>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('tk',0,this)">Прямая</button>
+      <button class="tab-btn" onclick="switchTab('tk',1,this)">Обратная</button>
+      <button class="tab-btn" onclick="switchTab('tk',2,this)">Вероятности</button>
+      <button class="tab-btn" onclick="switchTab('tk',3,this)">Взвешенные</button>
+    </div>
+
+    <div class="tab-pane active" id="tk-t0">
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">→</span>Прямая задача</div>
+        <div class="info"><strong>Подсказка:</strong> X₁, Y₁ и d в <strong>метрах</strong>. α — дирекционный угол в <strong>градусах</strong> (0…360°).</div>
+        <div class="formula-card">X₂ = X₁ + <span class="fc-hi">d·cos(α)</span><br>Y₂ = Y₁ + <span class="fc-hi">d·sin(α)</span></div>
+        <div class="field-row">
+          <div class="field"><label>X₁ (м)</label><input type="number" id="fx1" value="1000" step="0.01" oninput="calcFwd()"></div>
+          <div class="field"><label>Y₁ (м)</label><input type="number" id="fy1" value="500" step="0.01" oninput="calcFwd()"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>α (°)</label><input type="number" id="fa" value="45" step="0.01" min="0" max="360" oninput="calcFwd()"></div>
+          <div class="field"><label>d (м)</label><input type="number" id="fd" value="100" step="0.01" min="0" oninput="calcFwd()"></div>
+        </div>
+        <div class="live-calc">
+          <div class="live-row"><span class="live-k">X₂</span><span class="live-v" id="fwd-x2">—</span></div>
+          <div class="live-row"><span class="live-k">Y₂</span><span class="live-v p" id="fwd-y2">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tk-t1">
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">←</span>Обратная задача</div>
+        <div class="info"><strong>Подсказка:</strong> Координаты обеих точек в <strong>метрах</strong>. Угол α выводится в градусах, минутах и секундах (°′″), расстояние d — в метрах.</div>
+        <div class="formula-card">r = atan(<span class="fc-v">ΔY</span>/<span class="fc-n">ΔX</span>)<br>d = √(ΔX²+ΔY²)</div>
+        <div class="field-row">
+          <div class="field"><label>X₁ (м)</label><input type="number" id="ix1" value="1000" step="0.01" oninput="calcInv()"></div>
+          <div class="field"><label>Y₁ (м)</label><input type="number" id="iy1" value="500" step="0.01" oninput="calcInv()"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>X₂ (м)</label><input type="number" id="ix2" value="1070.71" step="0.01" oninput="calcInv()"></div>
+          <div class="field"><label>Y₂ (м)</label><input type="number" id="iy2" value="570.71" step="0.01" oninput="calcInv()"></div>
+        </div>
+        <div class="live-calc">
+          <div class="live-row"><span class="live-k">Угол α</span><span class="live-v" id="inv-a">—</span></div>
+          <div class="live-row"><span class="live-k">Расстояние d</span><span class="live-v p" id="inv-d">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tk-t2">
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">∫</span>P(|Δ| &lt; k·σ)</div>
+        <div class="info"><strong>Подсказка:</strong> k — кратность СКП (например 2 или 3). Ниже: m (СКП) в <strong>секундах</strong> (″); Δ_пред = t·m (t=2 или t=3 по методичке).</div>
+        <div class="field">
+          <label>Коэффициент k</label>
+          <div class="slider-row">
+            <input type="range" id="pb-kr" min="0.1" max="4" step="0.05" value="2" oninput="document.getElementById('pb-k').value=this.value;calcProb()">
+            <div class="slider-val" id="pb-kv">2.00</div>
+          </div>
+          <input type="number" id="pb-k" value="2" step="0.05" min="0.1" max="5" style="margin-top:8px" oninput="document.getElementById('pb-kr').value=this.value;calcProb()">
+        </div>
+        <div class="prob-big">
+          <div class="prob-num" id="pb-pct">95.45%</div>
+          <div class="prob-sub">P(|Δ|&lt;k·σ) &nbsp;|&nbsp; Φ(k) = <span id="pb-phi">0.4773</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">⊥</span>Предельная погрешность</div>
+        <div class="info"><strong>Формула:</strong> Δ_пр = t·m. В геодезии чаще используют <strong>утроенную</strong> (t=3, ≈99.7%) или <strong>удвоенную</strong> (t=2, ≈95%) — зависит от методички/норматива. Выберите кратность t.</div>
+        <div class="field-row">
+          <div class="field"><label>m (СКП, сек)</label><input type="number" id="lm-s" value="1.0" step="0.01" oninput="calcLim()"></div>
+          <div class="field"><label>Кратность t</label>
+            <select id="lm-t" onchange="calcLim()">
+              <option value="2">t=2 — удвоенная (≈95%)</option>
+              <option value="2.5">t=2.5 (≈99%)</option>
+              <option value="3" selected>t=3 — утроенная (≈99.7%)</option>
+            </select>
+          </div>
+        </div>
+        <div class="live-calc">
+          <div class="live-row"><span class="live-k">Δ_пред = t·m</span><span class="live-v g" id="lm-res">±3.000″</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">≡</span>Таблица Лапласа Φ(x)</div>
+        <div class="tbl-wrap"><table class="dt" id="laplace-table"></table></div>
+      </div>
+    </div>
+
+    <div class="tab-pane" id="tk-t3">
+      <div class="card">
+        <div class="card-title"><span class="ct-icon">⚖</span>Взвешенные измерения</div>
+        <div class="info"><strong>Подсказка:</strong> Формат: <strong>значение ; вес</strong> (или запятая/пробел между ними). Дробная часть — точка (100.325; 2 или 100, 1).</div>
+        <div class="field">
+          <label>Измерения и веса</label>
+          <textarea id="wt-in" placeholder="100.325; 1&#10;100; 2&#10;100.33; 3&#10;100.32; 4"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="calcWt()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Рассчитать
+        </button>
+      </div>
+      <div class="result hidden" id="wt-result">
+        <div class="result-grid" id="wt-main"></div>
+        <div class="result-sep"></div>
+        <div class="tbl-wrap" id="wt-tbl"></div>
+        <div class="result-sep"></div>
+        <div class="result-formula" id="wt-f"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ PAGE: СПРАВОЧНИК ═══════ -->
+  <div class="page" id="page-guide">
+    <div class="page-head">
+      <div class="page-title"><em>Справочник</em> формул</div>
+      <div class="page-desc">Все ключевые формулы геодезии</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">СКП при истинных ошибках</div>
+      <div class="formula-card" style="margin-bottom:0">m = √(<span class="fc-v">[Δ²]</span>/<span class="fc-n">n</span>)<br>m<sub>m</sub> = m/√(<span class="fc-n">2n</span>)</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">СКП при отклонениях от среднего</div>
+      <div class="formula-card" style="margin-bottom:0">m = √(<span class="fc-v">[v²]</span>/(<span class="fc-n">n</span>−1))</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">Предельная погрешность</div>
+      <div class="formula-card" style="margin-bottom:0">Δ<sub>пред</sub> = <span class="fc-hi">t</span>·m<br>t=2: P=95.45% | t=3: P=99.73%</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">Нивелирный ход</div>
+      <div class="formula-card" style="margin-bottom:0">f<sub>h</sub> = [h]−(H<sub>B</sub>−H<sub>A</sub>)<br>f<sub>доп</sub> = <span class="fc-hi">10</span>·√<span class="fc-v">L</span> мм (IV) | <span class="fc-hi">5</span>·√<span class="fc-v">L</span> мм (III)<br>δh<sub>i</sub> = −f<sub>h</sub>·d<sub>i</sub>/[d]</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">Теодолитный ход</div>
+      <div class="formula-card" style="margin-bottom:0">f<sub>β</sub>=[β]−(α₀−αₙ+n·180°)<br>f<sub>доп</sub>=1′·√n &nbsp;|&nbsp; f<sub>s</sub>=√(f<sub>x</sub>²+f<sub>y</sub>²)</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">Взвешенные измерения</div>
+      <div class="formula-card" style="margin-bottom:0">x̄=[p·l]/[p]<br>μ=√([p·v²]/([p]−1))<br>m<sub>x̄</sub>=μ/√[p]</div>
+    </div>
+    <div class="guide-item">
+      <div class="guide-item-title">Прямая / Обратная задачи</div>
+      <div class="formula-card" style="margin-bottom:0">ΔX=d·cos(α), ΔY=d·sin(α)<br>α=atan2(ΔY,ΔX) → по четвертям</div>
+    </div>
+  </div>
+
+  <!-- ═══════ PAGE: ВЕДОМОСТЬ ═══════ -->
+  <div class="page" id="page-vedmost">
+    <div class="page-head">
+      <div class="page-title">Ведомость <em>координат</em></div>
+      <div class="page-desc">Теодолитный ход — угловая и линейная увязка</div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">⊞</span>Тип хода</div>
+      <div class="field">
+        <select id="ved-type" onchange="vedToggleType()">
+          <option value="closed">Замкнутый ход</option>
+          <option value="open">Разомкнутый ход</option>
+        </select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="ct-icon">⊙</span>Исходные данные</div>
+      <div class="info"><strong>Углы β</strong> — правые горизонтальные. Формат: <strong>ГГ ММ СС.с</strong> (через пробел) или десятичные градусы. Один угол — одна строка.</div>
+      <div class="field-row">
+        <div class="field"><label>X нач (м)</label><input type="number" id="ved-x0" value="1000.00" step="0.01"></div>
+        <div class="field"><label>Y нач (м)</label><input type="number" id="ved-y0" value="1000.00" step="0.01"></div>
+      </div>
+      <div class="field">
+        <label id="ved-a0-label">α нач — дирекц. угол первой стороны (ГГ ММ СС)</label>
+        <input type="text" id="ved-a0" value="40 15 00">
+      </div>
+      <div id="ved-open-fields" style="display:none">
+        <div class="field-row">
+          <div class="field"><label>X кон (м)</label><input type="number" id="ved-xn" value="1200.00" step="0.01"></div>
+          <div class="field"><label>Y кон (м)</label><input type="number" id="ved-yn" value="1200.00" step="0.01"></div>
+        </div>
+        <div class="field">
+          <label>α кон (ГГ ММ СС)</label>
+          <input type="text" id="ved-an" value="80 30 00">
+        </div>
+      </div>
+      <div class="field">
+        <label>Правые углы β — каждый с новой строки</label>
+        <textarea id="ved-ang" placeholder="87 30 20&#10;130 45 10&#10;105 15 30&#10;142 00 20&#10;74 30 10"></textarea>
+      </div>
+      <div class="field">
+        <label>Стороны d (м) — каждая с новой строки</label>
+        <textarea id="ved-sides" placeholder="125.40&#10;98.70&#10;143.20&#10;87.50&#10;112.80" style="min-height:72px"></textarea>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="calcVed()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Рассчитать
+        </button>
+        <button class="btn btn-outline" onclick="vedExample()">Пример</button>
+      </div>
+    </div>
+    <div class="result hidden" id="ved-result">
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('vd',0,this)">Невязки</button>
+        <button class="tab-btn" onclick="switchTab('vd',1,this)">Углы</button>
+        <button class="tab-btn" onclick="switchTab('vd',2,this)">Координаты</button>
+        <button class="tab-btn" onclick="switchTab('vd',3,this)">Разбор</button>
+      </div>
+      <div class="tab-pane active" id="vd-t0">
+        <div class="result-grid" id="ved-main"></div>
+        <div class="result-sep"></div>
+        <div class="check-list" id="ved-checks"></div>
+      </div>
+      <div class="tab-pane" id="vd-t1">
+        <div class="tbl-wrap" id="ved-ang-tbl"></div>
+      </div>
+      <div class="tab-pane" id="vd-t2">
+        <div class="tbl-wrap" id="ved-coord-tbl"></div>
+      </div>
+      <div class="tab-pane" id="vd-t3">
+        <div id="ved-explain"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .app -->
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" onclick="goPage('residuals',this)">
+    <div class="nav-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 20 2 20"/></svg>
+    </div>
+    <div class="nav-label">Невязки</div>
+  </button>
+  <button class="nav-btn" onclick="goPage('leveling',this)">
+    <div class="nav-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="7" y1="7" x2="7" y2="17"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="17" y1="7" x2="17" y2="17"/></svg>
+    </div>
+    <div class="nav-label">Нивелир</div>
+  </button>
+  <button class="nav-btn" onclick="goPage('theodolite',this)">
+    <div class="nav-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="3" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="21" y2="12"/></svg>
+    </div>
+    <div class="nav-label">Теодолит</div>
+  </button>
+  <button class="nav-btn" onclick="goPage('tasks',this)">
+    <div class="nav-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
+    </div>
+    <div class="nav-label">Задачи</div>
+  </button>
+  <button class="nav-btn" onclick="goPage('guide',this)">
+    <div class="nav-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+    </div>
+    <div class="nav-label">Формулы</div>
+  </button>
+  <button class="nav-btn" onclick="goPage('vedmost',this)">
+    <div class="nav-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+    </div>
+    <div class="nav-label">Ведомость</div>
+  </button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
