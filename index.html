@@ -2,216 +2,299 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>GeoCalculator — Геодезия</title>
-<meta name="version" content="4.1">
-<!--
-  ╔══════════════════════════════════════════════════════════╗
-  ║  TELEGRAM WEB APP                                        ║
-  ║  Этот скрипт ОБЯЗАТЕЛЕН для работы внутри Telegram.      ║
-  ║  При открытии в браузере — работает как обычное PWA.      ║
-  ╚══════════════════════════════════════════════════════════╝
--->
+<meta name="version" content="5.0">
+<meta name="theme-color" content="#F2F2F7">
+<!-- Тема применяется до отрисовки, чтобы не было вспышки светлого фона -->
+<script>
+(function () {
+  try {
+    var m = localStorage.getItem('geocalc.theme') || 'auto';
+    var d = m === 'auto' ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : m;
+    document.documentElement.setAttribute('data-theme', d);
+  } catch (e) {}
+})();
+</script>
+<!-- Telegram Web App: обязателен внутри Telegram, в браузере страница работает и без него -->
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header>
-  <div class="logo">
-    <div class="logo-gem">
-      <svg viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2L21.5 7.5V16.5L12 22L2.5 16.5V7.5Z"/>
-        <line x1="2.5" y1="7.5" x2="21.5" y2="7.5" opacity=".4"/>
-        <line x1="12" y1="2" x2="12" y2="22" opacity=".25"/>
-      </svg>
-    </div>
-    <div>
-      <div class="logo-name">Geo<span>Calculator</span></div>
-      <div class="logo-sub">ГЕОДЕЗИЯ</div>
-    </div>
-  </div>
-  <div class="header-right">
-    <span class="header-user" id="tg-username"></span>
-    <div class="header-pill">v4.1</div>
-  </div>
+<header class="topbar" id="topbar">
+  <div class="topbar-title" id="topbar-title">Невязки</div>
+  <button class="topbar-btn" id="theme-btn" onclick="toggleTheme()" aria-label="Сменить тему"></button>
 </header>
 
-<div class="app">
+<main class="app" id="app">
 
-  <!-- ═══════ PAGE: НЕВЯЗКИ ═══════ -->
+  <!-- ═══════ НЕВЯЗКИ ═══════ -->
   <div class="page active" id="page-residuals">
-    <div class="page-head">
-      <div class="page-title">Угловые <em>невязки</em></div>
-      <div class="page-desc">СКП, оценка точности, предельная погрешность</div>
+    <h1 class="large-title">Угловые невязки</h1>
+    <div class="page-desc">СКП, оценка точности, предельная погрешность</div>
+
+    <div class="seg-ctrl" id="ar-seg">
+      <button class="seg-btn active" id="ar-tab-dms" onclick="switchArMode('dms',this)">Угловые, ″</button>
+      <button class="seg-btn" id="ar-tab-m" onclick="switchArMode('m',this)">Линейные, м</button>
     </div>
-    <div class="card">
-      <div class="card-header">
-        <div class="card-title">Данные</div>
-        <div class="seg-ctrl">
-          <button class="seg-btn active" id="ar-tab-dms" onclick="switchArMode('dms',this)">Град</button>
-          <button class="seg-btn" id="ar-tab-m" onclick="switchArMode('m',this)">Метры</button>
+
+    <div class="section ar-pane active" id="ar-pane-dms">
+      <div class="section-header">Невязки</div>
+      <div class="group">
+        <div class="field-block">
+          <textarea id="ar-input-dms" aria-label="Угловые невязки" placeholder="1.02, -1.88, 0.41, 1 30 0, 0 0 1.5"></textarea>
         </div>
       </div>
-      <div class="tab-pane active" id="ar-pane-dms">
-        <details class="help-section">
-          <summary>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Справка по формату ввода
-            <svg class="help-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </summary>
-          <div class="info"><strong>Углы:</strong> <strong>запятая</strong> — разделитель измерений. Минус обычный или типографский (−) — программа нормализует. Внутри фрагмента пишите градусы с пробелами: <strong>1 30 45</strong> = 1°30′45″. Одно число = секунды; три числа через пробел = °′″. Дробная часть — точка. Не менее 2 измерений.</div>
-        </details>
-        <div class="field">
-          <label>Невязки (сек или ° ′ ″)</label>
-          <textarea id="ar-input-dms" placeholder="1.02, -1.88, 0.41, 1 30 0, 0 0 1.5"></textarea>
-        </div>
-      </div>
-      <div class="tab-pane" id="ar-pane-m">
-        <details class="help-section">
-          <summary>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Справка по формату ввода
-            <svg class="help-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </summary>
-          <div class="info"><strong>Метры:</strong> линейные невязки в <strong>метрах</strong> (м). Разделители — пробел или запятая; дробная часть — точка (1.09, 2.3). Не менее 2 значений.</div>
-        </details>
-        <div class="field">
-          <label>Невязки (м)</label>
-          <textarea id="ar-input-m" placeholder="0.002 -0.001 0.003 0.001 -0.002"></textarea>
-        </div>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="calcAR()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Рассчитать
-        </button>
-        <button class="btn btn-outline" onclick="arExample()">Пример</button>
-      </div>
+      <div class="section-footer">Измерения разделяются запятой. Одно число — секунды; три числа через пробел — ° ′ ″ (1 30 45 = 1°30′45″). Не менее 2 значений.</div>
     </div>
+    <div class="section ar-pane" id="ar-pane-m">
+      <div class="section-header">Невязки</div>
+      <div class="group">
+        <div class="field-block">
+          <textarea id="ar-input-m" aria-label="Линейные невязки" placeholder="0.002 -0.001 0.003 0.001 -0.002"></textarea>
+        </div>
+      </div>
+      <div class="section-footer">Линейные невязки в метрах, через пробел или запятую. Не менее 2 значений.</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="calcAR()">Рассчитать</button>
+      <button class="btn btn-outline" onclick="arExample()">Пример</button>
+    </div>
+
     <div class="result hidden" id="ar-result">
       <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('ar',0,this)">Формула Бесселя</button>
-        <button class="tab-btn" onclick="switchTab('ar',1,this)">СКП Серии</button>
+        <button class="tab-btn active" onclick="switchTab('ar',0,this)">Бессель</button>
+        <button class="tab-btn" onclick="switchTab('ar',1,this)">СКП серии</button>
         <button class="tab-btn" onclick="switchTab('ar',2,this)">Свойства</button>
         <button class="tab-btn" onclick="switchTab('ar',3,this)">График</button>
       </div>
       <div class="tab-pane active" id="ar-t0">
         <div class="result-grid" id="ar-main"></div>
         <div id="ar-annot-wrap" class="ar-annot-wrap"></div>
-        <div class="result-sep"></div>
+        <div class="section-header section-header-gap">Решение по шагам</div>
         <div class="steps" id="ar-steps"></div>
       </div>
       <div class="tab-pane" id="ar-t1">
         <div class="result-grid" id="ar-conspect-main"></div>
         <div id="ar-conspect-annot" class="ar-annot-wrap"></div>
-        <div class="result-sep"></div>
+        <div class="section-header section-header-gap">Шаги по конспекту</div>
         <div id="ar-conspect" class="ar-conspect"></div>
       </div>
       <div class="tab-pane" id="ar-t2"><div class="check-list" id="ar-checks"></div></div>
-      <div class="tab-pane" id="ar-t3"><div id="ar-hist"></div></div>
+      <div class="tab-pane" id="ar-t3"><div class="card-pad" id="ar-hist"></div></div>
     </div>
   </div>
 
-  <!-- ═══════ PAGE: НИВЕЛИРОВКА ═══════ -->
+  <!-- ═══════ НИВЕЛИР ═══════ -->
   <div class="page" id="page-leveling">
-    <div class="page-head">
-      <div class="page-title">Нивелирный <em>ход</em></div>
-      <div class="page-desc">Невязка, допуск, уравнивание</div>
+    <h1 class="large-title">Нивелирный ход</h1>
+    <div class="page-desc">Невязка, допуск, уравнивание отметок</div>
+
+    <div class="section">
+      <div class="section-header">Исходные данные</div>
+      <div class="group">
+        <label class="row"><span class="row-label">Отметка H<sub>A</sub></span><input type="number" id="lev-ha" value="100.000" step="0.001" inputmode="decimal"><span class="row-unit">м</span></label>
+        <label class="row"><span class="row-label">Отметка H<sub>B</sub></span><input type="number" id="lev-hb" value="98.325" step="0.001" inputmode="decimal"><span class="row-unit">м</span></label>
+        <label class="row"><span class="row-label">Класс</span>
+          <select id="lev-cls">
+            <option value="2">II класс · 5√L</option>
+            <option value="3">III класс · 10√L</option>
+            <option value="4" selected>IV класс · 20√L</option>
+            <option value="t">Техническое · 50√L</option>
+          </select>
+        </label>
+      </div>
+      <div class="section-footer">Допуск f<sub>доп</sub> = k·√L мм, где L — длина хода в км.</div>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="ct-icon">⊟</span>Параметры</div>
-      <div class="info"><strong>Подсказка:</strong> H_A и H_B — в метрах. Превышения h_i (м) и длины секций d_i (км) — по одному значению на строку, количество должно совпадать. L в допуске — длина хода в км.</div>
-      <div class="field-row">
-        <div class="field"><label>H_A (м)</label><input type="number" id="lev-ha" value="100.000" step="0.001"></div>
-        <div class="field"><label>H_B (м)</label><input type="number" id="lev-hb" value="98.325" step="0.001"></div>
+
+    <div class="section">
+      <div class="section-header"><span>Секции · h, м · d, км</span><button class="hdr-btn" onclick="toggleRowsMode('lev-rows',this)">Текстом</button></div>
+      <div class="group rows-editor" id="lev-rows" data-cols='[{"id":"lev-h","label":"h, м","ph":"−0.312","signed":true},{"id":"lev-d","label":"d, км","ph":"1.20"}]'></div>
+      <div class="group" id="lev-rows-text" hidden>
+        <div class="field-block"><div class="fb-label">Превышения h, м — по одному на строку</div><textarea id="lev-h" placeholder="-0.312&#10;+0.548&#10;-0.271"></textarea></div>
+        <div class="field-block"><div class="fb-label">Длины секций d, км — по одному на строку</div><textarea id="lev-d" placeholder="1.2&#10;0.8&#10;1.5"></textarea></div>
       </div>
-      <div class="field">
-        <label>Класс нивелирования</label>
-        <select id="lev-cls">
-          <option value="2">II класс — 5√L мм</option>
-          <option value="3">III класс — 10√L мм</option>
-          <option value="4" selected>IV класс — 20√L мм</option>
-          <option value="t">Технич. — 50√L мм</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Превышения h_i (м) — каждое с новой строки</label>
-        <textarea id="lev-h" placeholder="-0.312&#10;+0.548&#10;-0.271&#10;+0.390&#10;-0.030"></textarea>
-      </div>
-      <div class="field">
-        <label>Длины секций d_i (км) — каждая с новой строки</label>
-        <textarea id="lev-d" placeholder="1.2&#10;0.8&#10;1.5&#10;1.1&#10;0.9" style="min-height:72px"></textarea>
-      </div>
-      <button class="btn btn-primary" onclick="calcLev()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Рассчитать
-      </button>
+      <div class="section-footer">Enter — следующая строка. Можно вставить два столбца из Excel.</div>
     </div>
+
+    <button class="btn btn-primary" onclick="calcLev()">Рассчитать</button>
+
     <div class="result hidden" id="lev-result">
+      <div id="lev-hero"></div>
       <div class="result-grid" id="lev-main"></div>
-      <div class="result-sep"></div>
+      <div class="section-header">Уравненные отметки</div>
       <div class="tbl-wrap" id="lev-tbl"></div>
     </div>
   </div>
 
-  <!-- ═══════ PAGE: ТЕОДОЛИТ ═══════ -->
-  <div class="page" id="page-theodolite">
-    <div class="page-head">
-      <div class="page-title">Теодолитный <em>ход</em></div>
-      <div class="page-desc">Угловая и линейная невязки, координаты</div>
+  <!-- ═══════ ХОДЫ ═══════ -->
+  <div class="page" id="page-traverse">
+    <h1 class="large-title">Ходы</h1>
+    <div class="page-desc">Теодолитный ход и ведомость координат</div>
+
+    <div class="seg-ctrl" id="trav-seg">
+      <button class="seg-btn active" id="trav-tab-theo" onclick="switchTrav('theo',this)">Теодолитный ход</button>
+      <button class="seg-btn" id="trav-tab-ved" onclick="switchTrav('ved',this)">Ведомость</button>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="ct-icon">∠</span>Опорные данные</div>
-      <div class="info"><strong>Подсказка:</strong> Углы β — правые. Формат: <strong>ГГ ММ СС</strong> через пробел (178 19 12) или десятичные градусы (178.32 = 178°19′12″). Углы и стороны — по одному на строку, в порядке хода. Сторон столько же, сколько углов (α нач — угол первой стороны), или на 1 меньше (α нач и α кон — исходные направления, углы измерены на обеих конечных точках).</div>
-      <div class="field-row">
-        <div class="field"><label>α нач (ГГ ММ СС)</label><input type="text" inputmode="decimal" id="th-a0" value="62 30 00"></div>
-        <div class="field"><label>α кон (ГГ ММ СС)</label><input type="text" inputmode="decimal" id="th-an" value="124 45 00"></div>
+
+    <!-- Теодолитный ход -->
+    <div class="trav-pane active" id="page-theodolite">
+      <div class="section">
+        <div class="section-header">Опорные направления</div>
+        <div class="group">
+          <label class="row"><span class="row-label">α нач</span><input type="text" id="th-a0" value="62 30 00" data-dms></label>
+          <label class="row"><span class="row-label">α кон</span><input type="text" id="th-an" value="124 45 00" data-dms></label>
+        </div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>X нач (м)</label><input type="number" id="th-x0" value="1000.00" step="0.01"></div>
-        <div class="field"><label>Y нач (м)</label><input type="number" id="th-y0" value="1000.00" step="0.01"></div>
+      <div class="section">
+        <div class="section-header">Координаты, м</div>
+        <div class="group">
+          <label class="row"><span class="row-label">X нач</span><input type="number" id="th-x0" value="1000.00" step="0.01" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">Y нач</span><input type="number" id="th-y0" value="1000.00" step="0.01" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">X кон</span><input type="number" id="th-xn" value="1248.55" step="0.01" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">Y кон</span><input type="number" id="th-yn" value="1352.80" step="0.01" inputmode="decimal"></label>
+        </div>
       </div>
-      <div class="field-row">
-        <div class="field"><label>X кон (м)</label><input type="number" id="th-xn" value="1248.55" step="0.01"></div>
-        <div class="field"><label>Y кон (м)</label><input type="number" id="th-yn" value="1352.80" step="0.01"></div>
+      <div class="section">
+        <div class="section-header"><span>Правые углы β · стороны d, м</span><button class="hdr-btn" onclick="toggleRowsMode('th-rows',this)">Текстом</button></div>
+        <div class="group rows-editor" id="th-rows" data-cols='[{"id":"th-ang","label":"β","type":"dms"},{"id":"th-sides","label":"d, м","ph":"125.40"}]'></div>
+        <div class="group" id="th-rows-text" hidden>
+          <div class="field-block"><div class="fb-label">Углы β (ГГ ММ СС) — по одному на строку</div><textarea id="th-ang" placeholder="178 19 12&#10;182 09 00&#10;175 28 48"></textarea></div>
+          <div class="field-block"><div class="fb-label">Стороны d, м — по одной на строку</div><textarea id="th-sides" placeholder="125.40&#10;98.70&#10;143.20"></textarea></div>
+        </div>
+        <div class="section-footer">Сторон столько же, сколько углов (α нач — угол первой стороны), или на одну меньше (углы измерены на обеих конечных точках).</div>
       </div>
-      <div class="field">
-        <label>Правые углы β — каждый с новой строки</label>
-        <textarea id="th-ang" placeholder="178 19 12&#10;182 09 00&#10;175 28 48&#10;186 42 00&#10;177 54 00"></textarea>
+      <div class="section">
+        <div class="section-header">Допуск</div>
+        <div class="group">
+          <label class="row"><span class="row-label">Относительная невязка</span>
+            <select id="th-rel">
+              <option value="1000">1:1000</option>
+              <option value="2000" selected>1:2000</option>
+              <option value="3000">1:3000</option>
+              <option value="5000">1:5000</option>
+            </select>
+          </label>
+        </div>
+        <div class="section-footer">Угловая невязка: f<sub>доп</sub> = 1′·√n.</div>
       </div>
-      <div class="field">
-        <label>Стороны d (м) — каждая с новой строки</label>
-        <textarea id="th-sides" placeholder="125.40&#10;98.70&#10;143.20&#10;87.50&#10;112.80" style="min-height:72px"></textarea>
+      <button class="btn btn-primary" onclick="calcTh()">Рассчитать</button>
+      <div class="result hidden" id="th-result">
+        <div id="th-hero"></div>
+        <div class="result-grid" id="th-main"></div>
+        <div class="section-header">Координаты</div>
+        <div class="tbl-wrap" id="th-tbl"></div>
       </div>
-      <div class="field">
-        <label>Допустимая относительная невязка</label>
-        <select id="th-rel">
-          <option value="1000">1:1000</option>
-          <option value="2000" selected>1:2000</option>
-          <option value="3000">1:3000</option>
-          <option value="5000">1:5000</option>
-        </select>
-      </div>
-      <button class="btn btn-primary" onclick="calcTh()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        Рассчитать
-      </button>
     </div>
-    <div class="result hidden" id="th-result">
-      <div class="result-grid" id="th-main"></div>
-      <div class="result-sep"></div>
-      <div class="tbl-wrap" id="th-tbl"></div>
+
+    <!-- Ведомость координат -->
+    <div class="trav-pane" id="page-vedmost">
+      <div class="section">
+        <div class="section-header">Ход</div>
+        <div class="group">
+          <label class="row"><span class="row-label">Тип</span>
+            <select id="ved-type" onchange="vedToggleType()">
+              <option value="closed">Замкнутый</option>
+              <option value="open">Разомкнутый</option>
+            </select>
+          </label>
+          <div class="row"><span class="row-label">Углы</span>
+            <div class="seg-ctrl seg-inline">
+              <button class="seg-btn active" id="ved-dir-right" onclick="vedSetAngDir('right',this)">Правые</button>
+              <button class="seg-btn" id="ved-dir-left" onclick="vedSetAngDir('left',this)">Левые</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Начало хода</div>
+        <div class="group">
+          <label class="row"><span class="row-label">X нач, м</span><input type="number" id="ved-x0" value="1000.00" step="0.01" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">Y нач, м</span><input type="number" id="ved-y0" value="1000.00" step="0.01" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">α нач</span><input type="text" id="ved-a0" value="40 15 00" data-dms></label>
+        </div>
+        <div class="section-footer" id="ved-a0-label">α нач — дирекционный угол первой стороны</div>
+      </div>
+
+      <div class="section">
+        <details class="group disclosure">
+          <summary class="row">Вычислить α нач по двум точкам</summary>
+          <label class="row"><span class="row-label">X₁, м</span><input type="number" id="ved-ax1" step="0.001" placeholder="0.000" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">Y₁, м</span><input type="number" id="ved-ay1" step="0.001" placeholder="0.000" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">X₂, м</span><input type="number" id="ved-ax2" step="0.001" placeholder="0.000" inputmode="decimal"></label>
+          <label class="row"><span class="row-label">Y₂, м</span><input type="number" id="ved-ay2" step="0.001" placeholder="0.000" inputmode="decimal"></label>
+          <div class="row"><button class="row-action" onclick="vedCalcAlpha()">Подставить α = atan2(ΔY, ΔX)</button></div>
+        </details>
+      </div>
+
+      <div class="section" id="ved-open-fields" style="display:none">
+        <div class="section-header">Конец хода</div>
+        <div class="group">
+          <label class="row"><span class="row-label">α кон известен</span><input type="checkbox" class="switch" id="ved-has-an" checked onchange="vedToggleEndFields()"></label>
+          <label class="row" id="ved-an-wrap"><span class="row-label">α кон</span><input type="text" id="ved-an" value="80 30 00" data-dms></label>
+          <label class="row"><span class="row-label">X, Y кон известны</span><input type="checkbox" class="switch" id="ved-has-end-xy" checked onchange="vedToggleEndFields()"></label>
+          <div id="ved-end-xy-wrap">
+            <label class="row"><span class="row-label">X кон, м</span><input type="number" id="ved-xn" value="1200.00" step="0.01" inputmode="decimal"></label>
+            <label class="row"><span class="row-label">Y кон, м</span><input type="number" id="ved-yn" value="1200.00" step="0.01" inputmode="decimal"></label>
+          </div>
+        </div>
+        <div class="section-footer">Сторон столько же, сколько углов (α кон — направление последней стороны), или на одну меньше (угол измерен и на конечной точке).</div>
+      </div>
+
+      <div class="section">
+        <div class="section-header"><span id="ved-ang-label">Правые углы и стороны</span><button class="hdr-btn" onclick="toggleRowsMode('ved-rows',this)">Текстом</button></div>
+        <div class="group rows-editor" id="ved-rows" data-cols='[{"id":"ved-ang","label":"β","type":"dms"},{"id":"ved-sides","label":"d, м","ph":"125.40"}]'></div>
+        <div class="group" id="ved-rows-text" hidden>
+          <div class="field-block"><div class="fb-label">Углы β (ГГ ММ СС) — по одному на строку</div><textarea id="ved-ang" placeholder="87 30 20&#10;130 45 10&#10;105 15 30"></textarea></div>
+          <div class="field-block"><div class="fb-label">Стороны d, м — по одной на строку</div><textarea id="ved-sides" placeholder="125.40&#10;98.70&#10;143.20"></textarea></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">Допуск</div>
+        <div class="group">
+          <label class="row"><span class="row-label">Относительная невязка</span>
+            <select id="ved-rel">
+              <option value="1000">1:1000</option>
+              <option value="2000" selected>1:2000</option>
+              <option value="3000">1:3000</option>
+              <option value="5000">1:5000</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="calcVed()">Рассчитать</button>
+        <button class="btn btn-outline" onclick="vedExample()">Пример</button>
+      </div>
+
+      <div class="result hidden" id="ved-result">
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab('vd',0,this)">Невязки</button>
+          <button class="tab-btn" onclick="switchTab('vd',1,this)">Углы</button>
+          <button class="tab-btn" onclick="switchTab('vd',2,this)">Координаты</button>
+          <button class="tab-btn" onclick="switchTab('vd',3,this)">Разбор</button>
+        </div>
+        <div class="tab-pane active" id="vd-t0">
+          <div id="ved-hero"></div>
+          <div class="result-grid" id="ved-main"></div>
+          <div class="check-list" id="ved-checks"></div>
+        </div>
+        <div class="tab-pane" id="vd-t1"><div class="tbl-wrap" id="ved-ang-tbl"></div></div>
+        <div class="tab-pane" id="vd-t2"><div class="tbl-wrap" id="ved-coord-tbl"></div></div>
+        <div class="tab-pane" id="vd-t3"><div id="ved-explain"></div></div>
+      </div>
     </div>
   </div>
 
-  <!-- ═══════ PAGE: ЗАДАЧИ ═══════ -->
+  <!-- ═══════ ЗАДАЧИ ═══════ -->
   <div class="page" id="page-tasks">
-    <div class="page-head">
-      <div class="page-title"><em>Геодезические</em> задачи</div>
-      <div class="page-desc">Прямая, обратная, вероятности, взвешенные</div>
-    </div>
+    <h1 class="large-title">Задачи</h1>
+    <div class="page-desc">Прямая, обратная, вероятности, взвешенные</div>
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('tk',0,this)">Прямая</button>
       <button class="tab-btn" onclick="switchTab('tk',1,this)">Обратная</button>
@@ -220,303 +303,177 @@
     </div>
 
     <div class="tab-pane active" id="tk-t0">
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">→</span>Прямая задача</div>
-        <div class="info"><strong>Подсказка:</strong> X₁, Y₁ и d в <strong>метрах</strong>. α — дирекционный угол: <strong>ГГ ММ СС</strong> через пробел или десятичные градусы.</div>
-        <div class="formula-card">X₂ = X₁ + <span class="fc-hi">d·cos(α)</span><br>Y₂ = Y₁ + <span class="fc-hi">d·sin(α)</span></div>
-        <div class="field-row">
-          <div class="field"><label>X₁ (м)</label><input type="number" id="fx1" value="1000" step="0.01" oninput="calcFwd()"></div>
-          <div class="field"><label>Y₁ (м)</label><input type="number" id="fy1" value="500" step="0.01" oninput="calcFwd()"></div>
+      <div class="section">
+        <div class="group"><div class="formula-card">X₂ = X₁ + <span class="fc-hi">d·cos α</span><br>Y₂ = Y₁ + <span class="fc-hi">d·sin α</span></div></div>
+      </div>
+      <div class="section">
+        <div class="section-header">Исходные данные</div>
+        <div class="group">
+          <label class="row"><span class="row-label">X₁, м</span><input type="number" id="fx1" value="1000" step="0.01" inputmode="decimal" oninput="calcFwd()"></label>
+          <label class="row"><span class="row-label">Y₁, м</span><input type="number" id="fy1" value="500" step="0.01" inputmode="decimal" oninput="calcFwd()"></label>
+          <label class="row"><span class="row-label">α</span><input type="text" id="fa" value="45 00 00" data-dms oninput="calcFwd()"></label>
+          <label class="row"><span class="row-label">d, м</span><input type="number" id="fd" value="100" step="0.01" min="0" inputmode="decimal" oninput="calcFwd()"></label>
         </div>
-        <div class="field-row">
-          <div class="field"><label>α (ГГ ММ СС)</label><input type="text" inputmode="decimal" id="fa" value="45 00 00" oninput="calcFwd()"></div>
-          <div class="field"><label>d (м)</label><input type="number" id="fd" value="100" step="0.01" min="0" oninput="calcFwd()"></div>
-        </div>
-        <div class="live-calc">
+      </div>
+      <div class="section">
+        <div class="section-header">Результат</div>
+        <div class="group live-calc">
           <div class="live-row"><span class="live-k">X₂</span><span class="live-v" id="fwd-x2">—</span></div>
-          <div class="live-row"><span class="live-k">Y₂</span><span class="live-v p" id="fwd-y2">—</span></div>
+          <div class="live-row"><span class="live-k">Y₂</span><span class="live-v" id="fwd-y2">—</span></div>
         </div>
       </div>
     </div>
 
     <div class="tab-pane" id="tk-t1">
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">←</span>Обратная задача</div>
-        <div class="info"><strong>Подсказка:</strong> Координаты обеих точек в <strong>метрах</strong>. Угол α выводится в градусах, минутах и секундах (°′″), расстояние d — в метрах.</div>
-        <div class="formula-card">r = atan(<span class="fc-v">ΔY</span>/<span class="fc-n">ΔX</span>)<br>d = √(ΔX²+ΔY²)</div>
-        <div class="field-row">
-          <div class="field"><label>X₁ (м)</label><input type="number" id="ix1" value="1000" step="0.01" oninput="calcInv()"></div>
-          <div class="field"><label>Y₁ (м)</label><input type="number" id="iy1" value="500" step="0.01" oninput="calcInv()"></div>
+      <div class="section">
+        <div class="group"><div class="formula-card">α = atan2(<span class="fc-v">ΔY</span>, <span class="fc-n">ΔX</span>)<br>d = √(ΔX² + ΔY²)</div></div>
+      </div>
+      <div class="section">
+        <div class="section-header">Координаты, м</div>
+        <div class="group">
+          <label class="row"><span class="row-label">X₁</span><input type="number" id="ix1" value="1000" step="0.01" inputmode="decimal" oninput="calcInv()"></label>
+          <label class="row"><span class="row-label">Y₁</span><input type="number" id="iy1" value="500" step="0.01" inputmode="decimal" oninput="calcInv()"></label>
+          <label class="row"><span class="row-label">X₂</span><input type="number" id="ix2" value="1070.71" step="0.01" inputmode="decimal" oninput="calcInv()"></label>
+          <label class="row"><span class="row-label">Y₂</span><input type="number" id="iy2" value="570.71" step="0.01" inputmode="decimal" oninput="calcInv()"></label>
         </div>
-        <div class="field-row">
-          <div class="field"><label>X₂ (м)</label><input type="number" id="ix2" value="1070.71" step="0.01" oninput="calcInv()"></div>
-          <div class="field"><label>Y₂ (м)</label><input type="number" id="iy2" value="570.71" step="0.01" oninput="calcInv()"></div>
-        </div>
-        <div class="live-calc">
-          <div class="live-row"><span class="live-k">Угол α</span><span class="live-v" id="inv-a">—</span></div>
-          <div class="live-row"><span class="live-k">Расстояние d</span><span class="live-v p" id="inv-d">—</span></div>
+      </div>
+      <div class="section">
+        <div class="section-header">Результат</div>
+        <div class="group live-calc">
+          <div class="live-row"><span class="live-k">Дирекционный угол α</span><span class="live-v" id="inv-a">—</span></div>
+          <div class="live-row"><span class="live-k">Расстояние d</span><span class="live-v" id="inv-d">—</span></div>
         </div>
       </div>
     </div>
 
     <div class="tab-pane" id="tk-t2">
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">∫</span>P(|Δ| &lt; k·σ)</div>
-        <div class="info"><strong>Подсказка:</strong> k — кратность СКП (например 2 или 3). Ниже: m (СКП) в <strong>секундах</strong> (″); Δ_пред = t·m (t=2 или t=3 по методичке).</div>
-        <div class="field">
-          <label>Коэффициент k</label>
-          <div class="slider-row">
-            <input type="range" id="pb-kr" min="0.1" max="4" step="0.05" value="2" oninput="document.getElementById('pb-k').value=this.value;calcProb()">
-            <div class="slider-val" id="pb-kv">2.00</div>
+      <div class="section">
+        <div class="section-header">P(|Δ| &lt; k·σ)</div>
+        <div class="group">
+          <div class="prob-big">
+            <div class="prob-num" id="pb-pct">95.45%</div>
+            <div class="prob-sub">Φ(k) = <span id="pb-phi">0.4773</span></div>
           </div>
-          <input type="number" id="pb-k" value="2" step="0.05" min="0.1" max="5" style="margin-top:8px" oninput="document.getElementById('pb-kr').value=this.value;calcProb()">
-        </div>
-        <div class="prob-big">
-          <div class="prob-num" id="pb-pct">95.45%</div>
-          <div class="prob-sub">P(|Δ|&lt;k·σ) &nbsp;|&nbsp; Φ(k) = <span id="pb-phi">0.4773</span></div>
+          <div class="row">
+            <input type="range" id="pb-kr" min="0.1" max="4" step="0.05" value="2" aria-label="Коэффициент k" oninput="document.getElementById('pb-k').value=this.value;calcProb()">
+            <span class="slider-val" id="pb-kv">2.00</span>
+          </div>
+          <label class="row"><span class="row-label">Коэффициент k</span><input type="number" id="pb-k" value="2" step="0.05" min="0.1" max="5" inputmode="decimal" oninput="document.getElementById('pb-kr').value=this.value;calcProb()"></label>
         </div>
       </div>
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">⊥</span>Предельная погрешность</div>
-        <div class="info"><strong>Формула:</strong> Δ_пр = t·m. В геодезии чаще используют <strong>утроенную</strong> (t=3, ≈99.7%) или <strong>удвоенную</strong> (t=2, ≈95%) — зависит от методички/норматива. Выберите кратность t.</div>
-        <div class="field-row">
-          <div class="field"><label>m (СКП, сек)</label><input type="number" id="lm-s" value="1.0" step="0.01" oninput="calcLim()"></div>
-          <div class="field"><label>Кратность t</label>
+      <div class="section">
+        <div class="section-header">Предельная погрешность</div>
+        <div class="group">
+          <label class="row"><span class="row-label">СКП m, ″</span><input type="number" id="lm-s" value="1.0" step="0.01" inputmode="decimal" oninput="calcLim()"></label>
+          <label class="row"><span class="row-label">Кратность t</span>
             <select id="lm-t" onchange="calcLim()">
-              <option value="2">t=2 — удвоенная (≈95%)</option>
-              <option value="2.5">t=2.5 (≈99%)</option>
-              <option value="3" selected>t=3 — утроенная (≈99.7%)</option>
+              <option value="2">t = 2 · ≈95%</option>
+              <option value="2.5">t = 2.5 · ≈99%</option>
+              <option value="3" selected>t = 3 · ≈99.7%</option>
             </select>
-          </div>
+          </label>
+          <div class="live-row"><span class="live-k">Δ<sub>пред</sub> = t·m</span><span class="live-v g" id="lm-res">±3″</span></div>
         </div>
-        <div class="live-calc">
-          <div class="live-row"><span class="live-k">Δ_пред = t·m</span><span class="live-v g" id="lm-res">±3.000″</span></div>
-        </div>
+        <div class="section-footer">Чаще используют утроенную (t = 3) или удвоенную (t = 2) СКП — по методичке или нормативу.</div>
       </div>
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">≡</span>Таблица Лапласа Φ(x)</div>
-        <div class="tbl-wrap"><table class="dt" id="laplace-table"></table></div>
+      <div class="section">
+        <div class="section-header">Таблица Лапласа Φ(x)</div>
+        <div class="tbl-wrap"><table class="dt dt-compact" id="laplace-table"></table></div>
       </div>
     </div>
 
     <div class="tab-pane" id="tk-t3">
-      <div class="card">
-        <div class="card-title"><span class="ct-icon">⚖</span>Взвешенные измерения</div>
-        <div class="info"><strong>Подсказка:</strong> Формат: <strong>значение ; вес</strong> (или запятая/пробел между ними). Дробная часть — точка (100.325; 2 или 100, 1).</div>
-        <div class="field">
-          <label>Измерения и веса</label>
-          <textarea id="wt-in" placeholder="100.325; 1&#10;100; 2&#10;100.33; 3&#10;100.32; 4"></textarea>
+      <div class="section">
+        <div class="section-header">Измерения и веса</div>
+        <div class="group">
+          <div class="field-block"><textarea id="wt-in" aria-label="Измерения и веса" placeholder="100.325; 1&#10;100; 2&#10;100.33; 3&#10;100.32; 4"></textarea></div>
         </div>
-        <button class="btn btn-primary" onclick="calcWt()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Рассчитать
-        </button>
+        <div class="section-footer">Каждая строка: значение ; вес (или через пробел). Вес больше нуля.</div>
       </div>
+      <button class="btn btn-primary" onclick="calcWt()">Рассчитать</button>
       <div class="result hidden" id="wt-result">
         <div class="result-grid" id="wt-main"></div>
-        <div class="result-sep"></div>
+        <div class="section-header">Таблица</div>
         <div class="tbl-wrap" id="wt-tbl"></div>
-        <div class="result-sep"></div>
-        <div class="result-formula" id="wt-f"></div>
+        <div class="section-header section-header-gap">Формулы</div>
+        <div class="group"><div class="formula-card" id="wt-f"></div></div>
       </div>
     </div>
   </div>
 
-  <!-- ═══════ PAGE: СПРАВОЧНИК ═══════ -->
+  <!-- ═══════ СПРАВКА ═══════ -->
   <div class="page" id="page-guide">
-    <div class="page-head">
-      <div class="page-title"><em>Справочник</em> формул</div>
-      <div class="page-desc">Все ключевые формулы геодезии</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">СКП при истинных ошибках</div>
-      <div class="formula-card" style="margin-bottom:0">m = √(<span class="fc-v">[Δ²]</span>/<span class="fc-n">n</span>)<br>m<sub>m</sub> = m/√(<span class="fc-n">2n</span>)</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">СКП при отклонениях от среднего</div>
-      <div class="formula-card" style="margin-bottom:0">m = √(<span class="fc-v">[v²]</span>/(<span class="fc-n">n</span>−1))</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">Предельная погрешность</div>
-      <div class="formula-card" style="margin-bottom:0">Δ<sub>пред</sub> = <span class="fc-hi">t</span>·m<br>t=2: P=95.45% | t=3: P=99.73%</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">Нивелирный ход</div>
-      <div class="formula-card" style="margin-bottom:0">f<sub>h</sub> = [h]−(H<sub>B</sub>−H<sub>A</sub>)<br>f<sub>доп</sub> = <span class="fc-hi">20</span>·√<span class="fc-v">L</span> мм (IV) | <span class="fc-hi">10</span>·√<span class="fc-v">L</span> мм (III)<br>δh<sub>i</sub> = −f<sub>h</sub>·d<sub>i</sub>/[d]</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">Теодолитный ход</div>
-      <div class="formula-card" style="margin-bottom:0">f<sub>β</sub>=[β]−(α₀−αₙ+n·180°)<br>f<sub>доп</sub>=1′·√n &nbsp;|&nbsp; f<sub>s</sub>=√(f<sub>x</sub>²+f<sub>y</sub>²)</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">Взвешенные измерения</div>
-      <div class="formula-card" style="margin-bottom:0">x̄=[p·l]/[p]<br>μ=√([p·v²]/(n−1))<br>m<sub>x̄</sub>=μ/√[p]</div>
-    </div>
-    <div class="guide-item">
-      <div class="guide-item-title">Прямая / Обратная задачи</div>
-      <div class="formula-card" style="margin-bottom:0">ΔX=d·cos(α), ΔY=d·sin(α)<br>α=atan2(ΔY,ΔX) → по четвертям</div>
-    </div>
-  </div>
+    <h1 class="large-title">Справка</h1>
+    <div class="page-desc">Оформление и ключевые формулы</div>
 
-  <!-- ═══════ PAGE: ВЕДОМОСТЬ ═══════ -->
-  <div class="page" id="page-vedmost">
-    <div class="page-head">
-      <div class="page-title">Ведомость <em>координат</em></div>
-      <div class="page-desc">Теодолитный ход — угловая и линейная увязка</div>
+    <div class="section">
+      <div class="section-header">Оформление</div>
+      <div class="seg-ctrl seg-flush" id="theme-seg">
+        <button class="seg-btn" data-theme-mode="auto" onclick="setTheme('auto')">Авто</button>
+        <button class="seg-btn" data-theme-mode="light" onclick="setTheme('light')">Светлая</button>
+        <button class="seg-btn" data-theme-mode="dark" onclick="setTheme('dark')">Тёмная</button>
+      </div>
+      <div class="section-footer">«Авто» повторяет тему Telegram или системы.</div>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="ct-icon">⊞</span>Тип хода</div>
-      <div class="field">
-        <select id="ved-type" onchange="vedToggleType()">
-          <option value="closed">Замкнутый ход</option>
-          <option value="open">Разомкнутый ход</option>
-        </select>
-      </div>
+
+    <div class="section">
+      <div class="section-header">СКП при истинных ошибках</div>
+      <div class="group"><div class="formula-card">m = √(<span class="fc-v">[Δ²]</span> / <span class="fc-n">n</span>)<br>m<sub>m</sub> = m / √(<span class="fc-n">2n</span>)</div></div>
     </div>
-    <div class="card">
-      <div class="card-title"><span class="ct-icon">⊙</span>Исходные данные</div>
-      <div class="info"><strong>Углы β</strong> — горизонтальные, правые или левые по ходу. Формат: <strong>ГГ ММ СС.с</strong> (через пробел) или десятичные градусы. Один угол — одна строка.</div>
-      <div class="field-row">
-        <div class="field"><label>X нач (м)</label><input type="number" id="ved-x0" value="1000.00" step="0.01"></div>
-        <div class="field"><label>Y нач (м)</label><input type="number" id="ved-y0" value="1000.00" step="0.01"></div>
-      </div>
-      <div class="field">
-        <label id="ved-a0-label">α нач — дирекц. угол первой стороны (ГГ ММ СС)</label>
-        <input type="text" id="ved-a0" value="40 15 00">
-        <details class="help-section" style="margin-top:6px">
-          <summary>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            Вычислить α из двух известных точек
-            <svg class="help-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-          </summary>
-          <div style="padding:8px 0 2px">
-            <div class="info" style="margin-bottom:8px">Обратная геодезическая задача: α = atan2(Y₂−Y₁, X₂−X₁). Укажите исходные точки — угол подставится автоматически.</div>
-            <div class="field-row">
-              <div class="field"><label>X₁ (м)</label><input type="number" id="ved-ax1" step="0.001" placeholder="0.000"></div>
-              <div class="field"><label>Y₁ (м)</label><input type="number" id="ved-ay1" step="0.001" placeholder="0.000"></div>
-            </div>
-            <div class="field-row">
-              <div class="field"><label>X₂ (м)</label><input type="number" id="ved-ax2" step="0.001" placeholder="0.000"></div>
-              <div class="field"><label>Y₂ (м)</label><input type="number" id="ved-ay2" step="0.001" placeholder="0.000"></div>
-            </div>
-            <button class="btn btn-outline" style="width:100%;margin-top:4px" onclick="vedCalcAlpha()">→ Подставить α в поле выше</button>
-          </div>
-        </details>
-      </div>
-      <div class="field" style="margin-bottom:10px">
-        <label>Направление измеренных углов</label>
-        <div class="seg-ctrl" style="margin-top:6px">
-          <button class="seg-btn active" id="ved-dir-right" onclick="vedSetAngDir('right',this)">Правые (β_пр)</button>
-          <button class="seg-btn" id="ved-dir-left" onclick="vedSetAngDir('left',this)">Левые (β_лев)</button>
-        </div>
-      </div>
-      <div id="ved-open-fields" style="display:none">
-        <div class="info" style="margin-bottom:8px">Сторон столько же, сколько углов (α кон — направление последней стороны), или на 1 меньше (угол измерен и на конечной точке, α кон — исходное конечное направление).</div>
-        <label class="check-toggle">
-          <input type="checkbox" id="ved-has-an" checked onchange="vedToggleEndFields()">
-          <span>Конечный дирекционный угол α_кон известен</span>
-        </label>
-        <div id="ved-an-wrap" class="field" style="margin-top:6px">
-          <label>α кон (ГГ ММ СС)</label>
-          <input type="text" id="ved-an" value="80 30 00">
-        </div>
-        <label class="check-toggle" style="margin-top:10px">
-          <input type="checkbox" id="ved-has-end-xy" checked onchange="vedToggleEndFields()">
-          <span>Конечные координаты X_кон, Y_кон известны</span>
-        </label>
-        <div id="ved-end-xy-wrap" class="field-row" style="margin-top:6px">
-          <div class="field"><label>X кон (м)</label><input type="number" id="ved-xn" value="1200.00" step="0.01"></div>
-          <div class="field"><label>Y кон (м)</label><input type="number" id="ved-yn" value="1200.00" step="0.01"></div>
-        </div>
-      </div>
-      <div class="field">
-        <label id="ved-ang-label">Правые углы β — каждый с новой строки</label>
-        <textarea id="ved-ang" placeholder="87 30 20&#10;130 45 10&#10;105 15 30&#10;142 00 20&#10;74 30 10"></textarea>
-      </div>
-      <div class="field">
-        <label>Стороны d (м) — каждая с новой строки</label>
-        <textarea id="ved-sides" placeholder="125.40&#10;98.70&#10;143.20&#10;87.50&#10;112.80" style="min-height:72px"></textarea>
-      </div>
-      <div class="field">
-        <label>Допустимая относительная невязка</label>
-        <select id="ved-rel">
-          <option value="1000">1:1000</option>
-          <option value="2000" selected>1:2000</option>
-          <option value="3000">1:3000</option>
-          <option value="5000">1:5000</option>
-        </select>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="calcVed()">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Рассчитать
-        </button>
-        <button class="btn btn-outline" onclick="vedExample()">Пример</button>
-      </div>
+    <div class="section">
+      <div class="section-header">СКП по отклонениям от среднего</div>
+      <div class="group"><div class="formula-card">m = √(<span class="fc-v">[v²]</span> / (<span class="fc-n">n</span> − 1))</div></div>
     </div>
-    <div class="result hidden" id="ved-result">
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('vd',0,this)">Невязки</button>
-        <button class="tab-btn" onclick="switchTab('vd',1,this)">Углы</button>
-        <button class="tab-btn" onclick="switchTab('vd',2,this)">Координаты</button>
-        <button class="tab-btn" onclick="switchTab('vd',3,this)">Разбор</button>
-      </div>
-      <div class="tab-pane active" id="vd-t0">
-        <div class="result-grid" id="ved-main"></div>
-        <div class="result-sep"></div>
-        <div class="check-list" id="ved-checks"></div>
-      </div>
-      <div class="tab-pane" id="vd-t1">
-        <div class="tbl-wrap" id="ved-ang-tbl"></div>
-      </div>
-      <div class="tab-pane" id="vd-t2">
-        <div class="tbl-wrap" id="ved-coord-tbl"></div>
-      </div>
-      <div class="tab-pane" id="vd-t3">
-        <div id="ved-explain"></div>
+    <div class="section">
+      <div class="section-header">Предельная погрешность</div>
+      <div class="group"><div class="formula-card">Δ<sub>пред</sub> = <span class="fc-hi">t</span>·m<br>t = 2: P = 95.45% · t = 3: P = 99.73%</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">Нивелирный ход</div>
+      <div class="group"><div class="formula-card">f<sub>h</sub> = [h] − (H<sub>B</sub> − H<sub>A</sub>)<br>f<sub>доп</sub> = <span class="fc-hi">20</span>·√<span class="fc-v">L</span> мм (IV) · <span class="fc-hi">10</span>·√<span class="fc-v">L</span> мм (III)<br>δh<sub>i</sub> = −f<sub>h</sub>·d<sub>i</sub> / [d]</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">Теодолитный ход</div>
+      <div class="group"><div class="formula-card">f<sub>β</sub> = [β] − (α₀ − αₙ + n·180°)<br>f<sub>доп</sub> = 1′·√n · f<sub>s</sub> = √(f<sub>x</sub>² + f<sub>y</sub>²)</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">Взвешенные измерения</div>
+      <div class="group"><div class="formula-card">x̄ = [p·l] / [p]<br>μ = √([p·v²] / (n − 1))<br>m<sub>x̄</sub> = μ / √[p]</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">Прямая и обратная задачи</div>
+      <div class="group"><div class="formula-card">ΔX = d·cos α, ΔY = d·sin α<br>α = atan2(ΔY, ΔX), приведённый к 0…360°</div></div>
+    </div>
+    <div class="section">
+      <div class="section-header">О приложении</div>
+      <div class="group">
+        <div class="row"><span class="row-label">Версия</span><span class="row-unit">5.0</span></div>
       </div>
     </div>
   </div>
 
-</div><!-- .app -->
+</main>
 
-<!-- BOTTOM NAV -->
-<nav class="bottom-nav">
+<nav class="bottom-nav" aria-label="Разделы">
   <button class="nav-btn active" onclick="goPage('residuals',this)">
-    <div class="nav-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 22 20 2 20"/></svg>
-    </div>
-    <div class="nav-label">Невязки</div>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 21 19.5H3Z"/></svg>
+    <span class="nav-label">Невязки</span>
   </button>
   <button class="nav-btn" onclick="goPage('leveling',this)">
-    <div class="nav-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><line x1="7" y1="7" x2="7" y2="17"/><line x1="12" y1="7" x2="12" y2="12"/><line x1="17" y1="7" x2="17" y2="17"/></svg>
-    </div>
-    <div class="nav-label">Нивелир</div>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5h18v5H3zM7 9.5v2.5M11 9.5v2.5M15 9.5v2.5M19 9.5v2.5"/></svg>
+    <span class="nav-label">Нивелир</span>
   </button>
-  <button class="nav-btn" onclick="goPage('theodolite',this)">
-    <div class="nav-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="21"/><line x1="3" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="21" y2="12"/></svg>
-    </div>
-    <div class="nav-label">Теодолит</div>
+  <button class="nav-btn" onclick="goPage('traverse',this)">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 18.5 9 8l6 5.5 5-8.5"/></svg>
+    <span class="nav-label">Ходы</span>
   </button>
   <button class="nav-btn" onclick="goPage('tasks',this)">
-    <div class="nav-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
-    </div>
-    <div class="nav-label">Задачи</div>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM15.5 8.5l-2 5-5 2 2-5Z"/></svg>
+    <span class="nav-label">Задачи</span>
   </button>
   <button class="nav-btn" onclick="goPage('guide',this)">
-    <div class="nav-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-    </div>
-    <div class="nav-label">Формулы</div>
-  </button>
-  <button class="nav-btn" onclick="goPage('vedmost',this)">
-    <div class="nav-icon">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-    </div>
-    <div class="nav-label">Ведомость</div>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5C4 4.7 4.7 4 5.5 4H11v16H5.5c-.8 0-1.5-.7-1.5-1.5ZM20 5.5c0-.8-.7-1.5-1.5-1.5H13v16h5.5c.8 0 1.5-.7 1.5-1.5Z"/></svg>
+    <span class="nav-label">Справка</span>
   </button>
 </nav>
 

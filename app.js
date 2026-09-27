@@ -1,5 +1,5 @@
 /*
- * GeoCalculator — Telegram Web App · v4.1
+ * GeoCalculator — Telegram Web App · v5.0 (дизайн в стиле iOS)
  * Статическое приложение (GitHub Pages). Открывается кнопкой меню бота,
  * настроенной в @BotFather: Bot Settings → Menu Button → ссылка на Pages.
  * В браузере работает как обычная веб-страница.
@@ -12,35 +12,61 @@ const tg = window.Telegram && window.Telegram.WebApp;
   if (!tg) return;
   tg.ready();
   tg.expand();
-  applyTelegramTheme();
-  const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
-  if (user) {
-    const name = user.first_name + (user.last_name ? ' ' + user.last_name : '');
-    const el = document.getElementById('tg-username');
-    if (el) el.textContent = name;
-  }
-  tg.onEvent('themeChanged', applyTelegramTheme);
+  tg.onEvent('themeChanged', applyTheme);
 })();
 
-function applyTelegramTheme() {
-  if (!tg || !tg.themeParams) return;
-  const p = tg.themeParams;
-  const r = document.documentElement.style;
-  if (p.bg_color)           r.setProperty('--background', p.bg_color);
-  if (p.secondary_bg_color) r.setProperty('--card',       p.secondary_bg_color);
-  if (p.secondary_bg_color) r.setProperty('--muted',      hexAlpha(p.secondary_bg_color, 0.7));
-  if (p.text_color)         r.setProperty('--foreground', p.text_color);
-  if (p.hint_color)         r.setProperty('--muted-fg',   p.hint_color);
-  if (p.button_color)       r.setProperty('--primary',    p.button_color);
-  if (p.button_color)       r.setProperty('--accent',     p.button_color);
-  if (p.bg_color)           r.setProperty('--input-bg',   hexAlpha(p.bg_color, 0.8));
+// ── ТЕМА ──────────────────────────────────────────────────
+// Режим: auto (как в Telegram / системе), light, dark. Палитра — всегда iOS,
+// цвета Telegram не подмешиваются, чтобы дизайн оставался каноном.
+const THEME_KEY = 'geocalc.theme';
+let themeMode = 'auto';
+try { themeMode = localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) { /* хранилище недоступно */ }
+
+const THEME_ICONS = {
+  light: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>',
+  dark: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.3 14.6A8.5 8.5 0 0 1 9.4 3.7a8.5 8.5 0 1 0 10.9 10.9Z"/></svg>'
+};
+
+function effectiveTheme() {
+  if (themeMode === 'light' || themeMode === 'dark') return themeMode;
+  if (tg && (tg.colorScheme === 'dark' || tg.colorScheme === 'light') && tg.platform !== 'unknown') return tg.colorScheme;
+  return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function hexAlpha(hex, alpha) {
-  const r = parseInt(hex.slice(1,3),16);
-  const g = parseInt(hex.slice(3,5),16);
-  const b = parseInt(hex.slice(5,7),16);
-  return `rgba(${r},${g},${b},${alpha})`;
+function applyTheme() {
+  const eff = effectiveTheme();
+  document.documentElement.setAttribute('data-theme', eff);
+  const bg = eff === 'dark' ? '#000000' : '#F2F2F7';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', bg);
+  const btn = document.getElementById('theme-btn');
+  if (btn) {
+    btn.innerHTML = THEME_ICONS[eff];
+    btn.setAttribute('aria-label', eff === 'dark' ? 'Включить светлую тему' : 'Включить тёмную тему');
+  }
+  document.querySelectorAll('#theme-seg .seg-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.themeMode === themeMode));
+  if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
+    try { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); } catch (e) { /* старый клиент */ }
+  }
+}
+
+function setTheme(mode) {
+  themeMode = mode;
+  try { localStorage.setItem(THEME_KEY, mode); } catch (e) { /* хранилище недоступно */ }
+  applyTheme();
+  haptic('light');
+}
+
+// Кнопка в верхней панели: быстрый переход светлая ↔ тёмная
+function toggleTheme() {
+  setTheme(effectiveTheme() === 'dark' ? 'light' : 'dark');
+}
+
+if (window.matchMedia) {
+  const mq = matchMedia('(prefers-color-scheme: dark)');
+  const onChange = () => { if (themeMode === 'auto') applyTheme(); };
+  if (mq.addEventListener) mq.addEventListener('change', onChange); else if (mq.addListener) mq.addListener(onChange);
 }
 
 function haptic(style) {
@@ -61,8 +87,27 @@ function goPage(id, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   btn.classList.add('active');
+  const label = btn.querySelector('.nav-label');
+  document.getElementById('topbar-title').textContent = label ? label.textContent : '';
   document.querySelector('.app').scrollTop = 0;
+  updateTopbar();
   haptic('light');
+}
+
+// Компактный заголовок в верхней панели появляется, когда крупный уходит под неё
+function updateTopbar() {
+  const app = document.getElementById('app');
+  document.getElementById('topbar').classList.toggle('scrolled', app.scrollTop > 36);
+}
+
+let travMode = 'theo'; // 'theo' | 'ved'
+
+function switchTrav(mode, btn) {
+  travMode = mode === 'ved' ? 'ved' : 'theo';
+  document.querySelectorAll('#trav-seg .seg-btn').forEach(b => b.classList.remove('active'));
+  (btn || document.getElementById('trav-tab-' + travMode)).classList.add('active');
+  document.getElementById('page-theodolite').classList.toggle('active', travMode === 'theo');
+  document.getElementById('page-vedmost').classList.toggle('active', travMode === 'ved');
 }
 
 function switchTab(g, idx, btn) {
@@ -95,7 +140,29 @@ const fnSmart = (v, d=4) => {
   return r.toFixed(d).replace(/\.?0+$/,'');
 };
 const fsSmart = (v, d=4) => typeof v==='number' ? (v>=0?'+':'')+fnSmart(v,d) : String(v);
-const ri = (l, v, c='') => `<div class="result-item"><div class="ri-label">${l}</div><div class="ri-val ${c}">${v}</div></div>`;
+// «f_h», «H_B−H_A» → нижние индексы
+const subs = l => String(l).replace(/_([^\s()=,+−·/:]+)/g, '<sub>$1</sub>');
+const ri = (l, v, c='') => `<div class="result-item"><div class="ri-label">${subs(l)}</div><div class="ri-val ${c}">${v}</div></div>`;
+
+// Значки статуса (аналоги SF Symbols: checkmark.circle.fill, xmark.circle.fill, info.circle.fill)
+const ICON = {
+  ok:   '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" style="fill:var(--green)"/><path d="m7.5 12.3 3 3 6-6.3" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  fail: '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" style="fill:var(--red)"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>',
+  info: '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" style="fill:var(--tint)"/><circle cx="12" cy="7.6" r="1.4" fill="#fff"/><path d="M12 11v6.2" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>'
+};
+
+// Итоговая карточка: статус, крупное число и шкала «сколько допуска израсходовано»
+function heroHtml({ state, status, side = '', num, unit = '', caption = '', ratio = null, scaleRight = '' }) {
+  const icon = state === 'ok' ? ICON.ok : state === 'bad' ? ICON.fail : ICON.info;
+  const bar = ratio === null ? '' : `
+    <div class="hero-bar ${state === 'bad' ? 'bad' : ''}"><div style="width:${Math.max(2, Math.min(100, ratio * 100)).toFixed(1)}%"></div></div>
+    <div class="hero-scale"><span>0</span><span>${scaleRight}</span></div>`;
+  return `<section class="hero" aria-label="Итог">
+    <div class="hero-status ${state}">${icon}<span>${status}</span><span class="hero-side">${side}</span></div>
+    <div class="hero-big"><span class="hero-num">${num}</span><span class="hero-unit">${unit}</span></div>
+    <div class="hero-cap">${caption}</div>${bar}
+  </section>`;
+}
 
 // Построчный разбор: одно значение на строку. Пустые строки пропускаются,
 // нераспознанные — возвращаются в bad (номера строк), чтобы не терять их молча.
@@ -130,8 +197,8 @@ let arMode = 'dms'; // 'dms' | 'm'
 
 function switchArMode(mode, btn) {
   arMode = mode;
-  document.querySelectorAll('#page-residuals .card .seg-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('#page-residuals .card .tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#ar-seg .seg-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#page-residuals .ar-pane').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(mode==='dms' ? 'ar-pane-dms' : 'ar-pane-m').classList.add('active');
 }
@@ -277,19 +344,19 @@ function calcAR() {
   const c3 = Math.abs(posN-negN) <= 1.5*Math.sqrt(n);
   document.getElementById('ar-checks').innerHTML = `
     <div class="check-item ${c1?'check-pass':'check-fail'}">
-      <span class="check-icon">${c1?'✅':'❌'}</span>
+      <span class="check-icon">${c1?ICON.ok:ICON.fail}</span>
       <div><strong>Симметрия (М[Δ]≈0)</strong>Среднее = ${arFmt(avg,1)} — ${c1?'ВЫПОЛНЯЕТСЯ':'НЕ ВЫПОЛНЯЕТСЯ'}</div>
     </div>
     <div class="check-item ${c2?'check-pass':'check-fail'}">
-      <span class="check-icon">${c2?'✅':'❌'}</span>
+      <span class="check-icon">${c2?ICON.ok:ICON.fail}</span>
       <div><strong>Ограниченность</strong>Δ_пред=${formatSKP(dp,isM)}; выбросов: ${out} — ${c2?'ВЫПОЛНЯЕТСЯ':'НЕ ВЫПОЛНЯЕТСЯ'}</div>
     </div>
     <div class="check-item ${c3?'check-pass':'check-fail'}">
-      <span class="check-icon">${c3?'✅':'❌'}</span>
+      <span class="check-icon">${c3?ICON.ok:ICON.fail}</span>
       <div><strong>Взаимное уничтожение</strong>+:${posN} / −:${negN} — ${c3?'ВЫПОЛНЯЕТСЯ':'НЕ ВЫПОЛНЯЕТСЯ'}</div>
     </div>
     <div class="check-item check-neutral">
-      <span class="check-icon">ℹ️</span>
+      <span class="check-icon">${ICON.info}</span>
       <div><strong>Вывод</strong>${(c1&&c2&&c3) ? 'Погрешности случайные.' : 'Обнаружены отклонения. Требуется анализ.'}</div>
     </div>`;
 
@@ -403,6 +470,13 @@ function calcLev() {
   const corr = dv.map(d => -fh*d/sumD);
   const adjH = hv.map((h,i) => h + corr[i]);
 
+  const clsName = ({ '2': 'II класс', '3': 'III класс', '4': 'IV класс', 't': 'Техническое' })[cls] || '';
+  document.getElementById('lev-hero').innerHTML = heroHtml({
+    state: ok ? 'ok' : 'bad', status: ok ? 'В допуске' : 'Допуск превышен', side: clsName,
+    num: fsSmart(Math.round(fh * 10000) / 10, 1), unit: 'мм',
+    caption: 'Невязка f<sub>h</sub> = Σh − (H<sub>B</sub> − H<sub>A</sub>)',
+    ratio: Math.abs(fh * 1000) / fdop, scaleRight: 'допуск ±' + fnSmart(fdop, 1) + ' мм'
+  });
   document.getElementById('lev-main').innerHTML =
     ri('Σh', fnSmart(sumH,4)+' м') +
     ri('H_B−H_A', fnSmart(HB-HA,4)+' м') +
@@ -415,10 +489,10 @@ function calcLev() {
   rows += `<tr><td class="td-hi">A</td><td>—</td><td>—</td><td>—</td><td class="td-hi">${fnSmart(HA,4)}</td></tr>`;
   adjH.forEach((h,i) => {
     H += h;
-    rows += `<tr><td>${i+1}</td><td>${fsSmart(hv[i],4)}</td><td>${fnSmart(corr[i]*1000,1)} мм</td><td>${fsSmart(h,4)}</td><td class="td-hi">${fnSmart(H,4)}</td></tr>`;
+    rows += `<tr><td>${i+1}</td><td>${fsSmart(hv[i],4)}</td><td>${fnSmart(corr[i]*1000,1)}</td><td>${fsSmart(h,4)}</td><td class="td-hi">${fnSmart(H,4)}</td></tr>`;
   });
   document.getElementById('lev-tbl').innerHTML =
-    `<table class="dt"><thead><tr><th>Тч</th><th>h_i</th><th>Попр.</th><th>h_исп</th><th>H (м)</th></tr></thead><tbody>${rows}</tbody></table>`;
+    `<table class="dt"><thead><tr><th>Тч</th><th>h, м</th><th>v, мм</th><th>h испр</th><th>H, м</th></tr></thead><tbody>${rows}</tbody></table>`;
   document.getElementById('lev-result').classList.remove('hidden');
 }
 
@@ -470,6 +544,13 @@ function calcTh() {
   const cx  = sid.map(d => -fx*d/sumD);
   const cy  = sid.map(d => -fy*d/sumD);
 
+  document.getElementById('th-hero').innerHTML = heroHtml({
+    state: angOk && linOk ? 'ok' : 'bad',
+    status: angOk && linOk ? 'В допуске' : !angOk && !linOk ? 'Обе невязки превышены' : !angOk ? 'Угловая невязка превышена' : 'Линейная невязка превышена',
+    side: 'f<sub>β</sub> ' + formatDMS(fb * 60),
+    num: relStr, caption: 'Относительная линейная невязка f<sub>s</sub> / Σd',
+    ratio: T * relLim, scaleRight: 'допуск 1:' + relLim
+  });
   document.getElementById('th-main').innerHTML =
     ri('f_β', formatDMS(fb * 60), angOk?'':'r') +
     ri('Допуск ±1′√n', '±'+fnSmart(fdop,2)+'′') +
@@ -621,8 +702,8 @@ function vedSetAngDir(dir, btn) {
   (btn || document.getElementById(dir === 'left' ? 'ved-dir-left' : 'ved-dir-right')).classList.add('active');
   const lbl = document.getElementById('ved-ang-label');
   if (lbl) lbl.textContent = dir === 'left'
-    ? 'Левые углы β — каждый с новой строки'
-    : 'Правые углы β — каждый с новой строки';
+    ? 'Левые углы и стороны'
+    : 'Правые углы и стороны';
 }
 
 function vedCalcAlpha() {
@@ -641,6 +722,8 @@ function vedCalcAlpha() {
   const d = Math.floor(tot / 3600), rem = tot % 3600;
   const m = Math.floor(rem / 60), s = rem % 60;
   document.getElementById('ved-a0').value = `${d} ${String(m).padStart(2,'0')} ${String(s).padStart(2,'0')}`;
+  refreshInputs();
+  saveStore();
   haptic('light');
 }
 
@@ -656,8 +739,8 @@ function vedToggleType() {
   document.getElementById('ved-open-fields').style.display = t==='open' ? 'block' : 'none';
   const lbl = document.getElementById('ved-a0-label');
   if (lbl) lbl.textContent = t === 'open'
-    ? 'α нач — дирекц. угол исходного направления (ГГ ММ СС)'
-    : 'α нач — дирекц. угол первой стороны (ГГ ММ СС)';
+    ? 'α нач — дирекционный угол исходного направления (засечки)'
+    : 'α нач — дирекционный угол первой стороны';
 }
 
 // Угол: «ГГ ММ СС.с», «ГГ°ММ′СС″» или десятичные градусы. Некорректный ввод → NaN.
@@ -701,6 +784,8 @@ function vedExample() {
   document.getElementById('ved-a0').value = '0 00 00';
   document.getElementById('ved-ang').value   = '89 59 10\n90 00 40\n89 58 50\n90 01 40';
   document.getElementById('ved-sides').value = '200.00\n150.00\n200.00\n150.00';
+  refreshInputs();
+  saveStore();
   calcVed();
 }
 
@@ -815,6 +900,22 @@ function calcVed() {
   const angKnown = angOk !== null;
   const linKnown = linOk !== null;
 
+  const allOk = (!angKnown || angOk) && (!linKnown || linOk);
+  document.getElementById('ved-hero').innerHTML = linKnown ? heroHtml({
+    state: allOk ? 'ok' : 'bad',
+    status: allOk ? 'В допуске' : (angKnown && !angOk && !linOk) ? 'Обе невязки превышены' : (angKnown && !angOk) ? 'Угловая невязка превышена' : 'Линейная невязка превышена',
+    side: angKnown ? 'f<sub>β</sub> ' + fnSmart(fBetaSec, 1) + '″' : 'без угловой увязки',
+    num: relText(T), caption: 'Относительная линейная невязка f<sub>s</sub> / Σd',
+    ratio: T * relLim, scaleRight: 'допуск 1:' + relLim
+  }) : angKnown ? heroHtml({
+    state: angOk ? 'ok' : 'bad', status: angOk ? 'Угловая невязка в допуске' : 'Угловая невязка превышена',
+    side: 'без линейной увязки', num: fsSmart(Math.round(fBetaSec * 10) / 10, 1), unit: '″',
+    caption: 'Угловая невязка f<sub>β</sub>',
+    ratio: Math.abs(fBetaSec) / (fdopMin * 60), scaleRight: 'допуск ±' + fnSmart(fdopMin * 60, 1) + '″'
+  }) : heroHtml({
+    state: 'info', status: 'Висячий ход', num: 'Без контроля',
+    caption: 'Конечные α и X, Y не заданы — невязки не вычисляются, координаты без поправок'
+  });
   document.getElementById('ved-main').innerHTML =
     ri('f_β (″)', angKnown ? fnSmart(fBetaSec,1) : '—', angKnown&&!angOk?'r':'') +
     ri('Допуск ±1′√n', '±'+fnSmart(fdopMin,2)+'′', 'o') +
@@ -827,13 +928,13 @@ function calcVed() {
 
   document.getElementById('ved-checks').innerHTML = `
     <div class="check-item ${angKnown?(angOk?'check-pass':'check-fail'):'check-neutral'}">
-      <span class="check-icon">${angKnown?(angOk?'✅':'❌'):'ℹ️'}</span>
+      <span class="check-icon">${angKnown?(angOk?ICON.ok:ICON.fail):ICON.info}</span>
       <div><strong>Угловая невязка</strong>${angKnown
         ? `f_β = ${fnSmart(fBetaSec,1)}″ | Допуск ±${fnSmart(fdopMin,2)}′ — ${angOk?'НОРМА':'ПРЕВЫШЕНА'}`
         : 'α_кон не задан — угловая увязка не выполняется (висячий ход)'}</div>
     </div>
     <div class="check-item ${linKnown?(linOk?'check-pass':'check-fail'):'check-neutral'}">
-      <span class="check-icon">${linKnown?(linOk?'✅':'❌'):'ℹ️'}</span>
+      <span class="check-icon">${linKnown?(linOk?ICON.ok:ICON.fail):ICON.info}</span>
       <div><strong>Линейная невязка</strong>${linKnown
         ? `f_s = ${fnSmart(fs,4)} м | ${relText(T)} (допуск 1:${relLim}) — ${linOk?'НОРМА':'ПРЕВЫШЕНА'}`
         : 'X_кон/Y_кон не заданы — линейная увязка не выполняется (координаты без поправки)'}</div>
@@ -998,6 +1099,238 @@ function calcVed() {
   document.getElementById('ved-result').classList.remove('hidden');
 }
 
+// ── ПОЛЯ ВВОДА В СТИЛЕ iOS ────────────────────────────────
+// Источник истины — исходные поля (input[data-dms], textarea): их читают расчёты
+// и сохраняет saveStore. Виджеты ниже только редактируют эти поля.
+
+// «ГГ ММ СС» ↔ три поля ° ′ ″ (на цифровой клавиатуре iOS нет пробела)
+function dmsParts(v) {
+  const t = String(v || '').trim().replace(/[°'′″"]/g, ' ').trim();
+  if (!t) return ['', '', ''];
+  const p = t.split(/\s+/);
+  return [p[0] || '', p[1] || '', p.slice(2).join(' ') || ''];
+}
+function dmsJoin(d, m, sec) {
+  d = d.trim(); m = m.trim(); sec = sec.trim();
+  if (!d && !m && !sec) return '';
+  if (!m && !sec) return d;
+  return [d || '0', m || '0', sec || '0'].join(' ');
+}
+
+function buildDms(value, onChange) {
+  const wrap = document.createElement('span');
+  wrap.className = 'dms';
+  const specs = [['dms-d', '0', '°', 'градусы', 3], ['dms-m', '00', '′', 'минуты', 2], ['dms-s', '00', '″', 'секунды', 0]];
+  const inputs = specs.map(([cls, ph, sym, label, maxDigits], i) => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.inputMode = 'decimal';
+    inp.className = cls;
+    inp.placeholder = ph;
+    inp.setAttribute('aria-label', label);
+    inp.autocomplete = 'off';
+    const mark = document.createElement('span');
+    mark.textContent = sym;
+    wrap.append(inp, mark);
+    inp.addEventListener('input', () => {
+      // Вставка целого угла «178 19 12» в любое из полей раскладывается по трём полям
+      if (/[\s°'′″"]/.test(inp.value.trim())) {
+        const parts = dmsParts(inp.value);
+        inputs.forEach((x, k) => { x.value = parts[k]; });
+      } else if (maxDigits && /^\d+$/.test(inp.value) && inp.value.length >= maxDigits && inputs[i + 1]) {
+        inputs[i + 1].focus();
+        inputs[i + 1].select();
+      }
+      onChange(dmsJoin(inputs[0].value, inputs[1].value, inputs[2].value));
+    });
+    return inp;
+  });
+  wrap.setValue = v => { const parts = dmsParts(v); inputs.forEach((x, k) => { x.value = parts[k]; }); };
+  wrap.focusFirst = () => inputs[0].focus();
+  wrap.setValue(value);
+  return wrap;
+}
+
+function initDmsFields() {
+  document.querySelectorAll('input[data-dms]').forEach(src => {
+    const w = buildDms(src.value, v => {
+      src.value = v;
+      src.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    src._dms = w;
+    src.after(w);
+  });
+}
+
+// Редактор строк: каждая колонка — своя textarea (по значению на строку)
+const ICON_MINUS = '<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" style="fill:var(--red)"/><path d="M7 12h10" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>';
+const ICON_PLUS = '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" style="fill:var(--tint)"/><path d="M12 7v10M7 12h10" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>';
+
+function edCols(ed) { return JSON.parse(ed.dataset.cols); }
+
+function colLines(id) {
+  const a = document.getElementById(id).value.replace(/\r\n?/g, '\n').split('\n');
+  while (a.length && !a[a.length - 1].trim()) a.pop();
+  return a;
+}
+
+function edMatrix(ed) {
+  return [...ed.querySelectorAll('.rows-item')].map(row =>
+    [...row.querySelectorAll('.rows-cell')].map(c => c.dataset.value || ''));
+}
+
+// Матрица → textarea. Пустая ячейка в середине столбца записывается как «?»,
+// чтобы расчёт сообщил номер строки, а не сдвинул данные молча.
+function edWrite(ed, matrix) {
+  edCols(ed).forEach((c, ci) => {
+    const vals = matrix.map(r => (r[ci] || '').trim());
+    let last = vals.length - 1;
+    while (last >= 0 && !vals[last]) last--;
+    document.getElementById(c.id).value = vals.slice(0, last + 1).map(v => v || '?').join('\n');
+  });
+}
+
+function edCell(ed, c, value) {
+  let cell;
+  if (c.type === 'dms') {
+    cell = buildDms(value, v => { cell.dataset.value = v; edWrite(ed, edMatrix(ed)); });
+    cell.classList.add('rows-cell');
+  } else {
+    cell = document.createElement('span');
+    cell.className = 'rows-cell';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.inputMode = 'decimal';
+    inp.autocomplete = 'off';
+    inp.placeholder = c.ph || '';
+    inp.value = value;
+    inp.setAttribute('aria-label', c.label);
+    inp.addEventListener('input', () => { cell.dataset.value = inp.value; edWrite(ed, edMatrix(ed)); });
+    if (c.signed) {
+      // На цифровой клавиатуре iOS нет минуса — знак переключается кнопкой
+      const sign = document.createElement('button');
+      sign.type = 'button';
+      sign.className = 'cell-sign';
+      sign.textContent = '±';
+      sign.setAttribute('aria-label', 'Сменить знак');
+      sign.addEventListener('click', () => {
+        const v = inp.value.trim().replace(/^−/, '-');
+        inp.value = v.startsWith('-') ? v.slice(1) : '-' + v.replace(/^\+/, '');
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      cell.append(sign);
+    }
+    cell.append(inp);
+  }
+  cell.dataset.value = value;
+  return cell;
+}
+
+function renderRows(ed, focus) {
+  const cols = edCols(ed);
+  const lines = cols.map(c => colLines(c.id));
+  const n = Math.max(1, ed._rows || 0, ...lines.map(l => l.length));
+  ed._rows = n;
+  ed.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const row = document.createElement('div');
+    row.className = 'row rows-item';
+    const num = document.createElement('span');
+    num.className = 'row-num';
+    num.textContent = i + 1;
+    row.append(num);
+    cols.forEach((c, ci) => row.append(edCell(ed, c, (lines[ci][i] || '').replace(/^\?$/, ''))));
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'row-del';
+    del.innerHTML = ICON_MINUS;
+    del.setAttribute('aria-label', 'Удалить строку ' + (i + 1));
+    del.addEventListener('click', () => {
+      const m = edMatrix(ed);
+      m.splice(i, 1);
+      ed._rows = Math.max(1, n - 1);
+      edWrite(ed, m);
+      renderRows(ed);
+      saveStore();
+      haptic('light');
+    });
+    row.append(del);
+    ed.append(row);
+  }
+  const addRow = document.createElement('div');
+  addRow.className = 'row';
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'row-add';
+  add.innerHTML = ICON_PLUS + '<span>Добавить строку</span>';
+  add.addEventListener('click', () => { ed._rows = n + 1; renderRows(ed, n); });
+  addRow.append(add);
+  ed.append(addRow);
+  if (focus !== undefined) {
+    const target = ed.querySelectorAll('.rows-item')[focus];
+    const first = target && target.querySelector('.rows-cell');
+    if (first) (first.focusFirst ? first.focusFirst() : first.querySelector('input').focus());
+  }
+}
+
+function initRowsEditor(ed) {
+  // Enter — к той же колонке следующей строки (новая строка создаётся при необходимости)
+  ed.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    const rows = [...ed.querySelectorAll('.rows-item')];
+    const ri = rows.indexOf(e.target.closest('.rows-item'));
+    const cells = [...rows[ri].querySelectorAll('.rows-cell')];
+    const ci = cells.indexOf(e.target.closest('.rows-cell'));
+    if (ri === rows.length - 1) { ed._rows = rows.length + 1; renderRows(ed); }
+    const next = ed.querySelectorAll('.rows-item')[ri + 1].querySelectorAll('.rows-cell')[ci];
+    (next.focusFirst ? next.focusFirst() : next.querySelector('input').focus());
+  });
+  // Вставка нескольких строк / столбцов (из Excel — табуляция, либо «;»)
+  ed.addEventListener('paste', e => {
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (!/[\n\t;]/.test(text.trim())) return;
+    e.preventDefault();
+    const rows = [...ed.querySelectorAll('.rows-item')];
+    const ri = rows.indexOf(e.target.closest('.rows-item'));
+    const ci = [...rows[ri].querySelectorAll('.rows-cell')].indexOf(e.target.closest('.rows-cell'));
+    const ncol = edCols(ed).length;
+    const m = edMatrix(ed);
+    text.trim().split(/\r\n?|\n/).forEach((line, r) => {
+      const parts = line.split(/\t|;/);
+      m[ri + r] = m[ri + r] || new Array(ncol).fill('');
+      parts.forEach((v, c) => { if (ci + c < ncol) m[ri + r][ci + c] = v.trim(); });
+    });
+    for (let r = 0; r < m.length; r++) m[r] = m[r] || new Array(ncol).fill('');
+    ed._rows = m.length;
+    edWrite(ed, m);
+    renderRows(ed);
+    saveStore();
+  });
+}
+
+// «Текстом» ↔ «Строками»: текстовый режим удобен для больших списков
+function toggleRowsMode(edId, btn) {
+  const ed = document.getElementById(edId);
+  const txt = document.getElementById(edId + '-text');
+  if (!ed.hidden) {
+    ed.hidden = true; txt.hidden = false; btn.textContent = 'Строками';
+  } else {
+    ed._rows = 0; renderRows(ed);
+    ed.hidden = false; txt.hidden = true; btn.textContent = 'Текстом';
+  }
+}
+
+// После программного изменения полей (пример, восстановление) — перерисовать виджеты
+function refreshInputs() {
+  document.querySelectorAll('input[data-dms]').forEach(src => { if (src._dms) src._dms.setValue(src.value); });
+  document.querySelectorAll('.rows-editor').forEach(ed => {
+    if (!ed._init) { initRowsEditor(ed); ed._init = true; }
+    ed._rows = 0;
+    renderRows(ed);
+  });
+}
+
 // ── СОХРАНЕНИЕ ВВОДА ──────────────────────────────────────
 // Введённые данные хранятся локально, чтобы не терялись при закрытии Web App.
 const STORE_KEY = 'geocalc.inputs.v1';
@@ -1007,7 +1340,7 @@ function loadStore() {
 }
 
 function saveStore() {
-  const data = { _arMode: arMode, _vedAngDir: vedAngDir };
+  const data = { _arMode: arMode, _vedAngDir: vedAngDir, _trav: travMode };
   document.querySelectorAll('.app input[id], .app textarea[id], .app select[id]').forEach(el => {
     data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
   });
@@ -1024,6 +1357,7 @@ function restoreStore() {
   });
   if (data._arMode === 'm') switchArMode('m', document.getElementById('ar-tab-m'));
   if (data._vedAngDir === 'left') vedSetAngDir('left');
+  if (data._trav === 'ved') switchTrav('ved');
   document.getElementById('pb-kr').value = document.getElementById('pb-k').value;
   vedToggleType();
   vedToggleEndFields();
@@ -1031,8 +1365,12 @@ function restoreStore() {
 
 // ── INIT ──────────────────────────────────────────────────
 window.onload = () => {
+  applyTheme();
+  initDmsFields();
   restoreStore();
+  refreshInputs();
   const app = document.querySelector('.app');
+  app.addEventListener('scroll', updateTopbar, { passive: true });
   app.addEventListener('input', saveStore);
   app.addEventListener('change', saveStore);
   app.addEventListener('click', e => { if (e.target.closest('.seg-btn')) saveStore(); });
