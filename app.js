@@ -87,14 +87,12 @@ function goPage(id, btn) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   btn.classList.add('active');
-  const label = btn.querySelector('.nav-label');
-  document.getElementById('topbar-title').textContent = label ? label.textContent : '';
   document.querySelector('.app').scrollTop = 0;
   updateTopbar();
   haptic('light');
 }
 
-// Компактный заголовок в верхней панели появляется, когда крупный уходит под неё
+// Верхняя панель становится «стеклянной», когда контент уходит под неё
 function updateTopbar() {
   const app = document.getElementById('app');
   document.getElementById('topbar').classList.toggle('scrolled', app.scrollTop > 36);
