@@ -1,5 +1,5 @@
 /*
- * GeoCalculator — Telegram Web App
+ * GeoCalculator — Telegram Web App · v4.1
  * Статическое приложение (GitHub Pages). Открывается кнопкой меню бота,
  * настроенной в @BotFather: Bot Settings → Menu Button → ссылка на Pages.
  * В браузере работает как обычная веб-страница.
