@@ -25,8 +25,10 @@
  *    });
  *
  * 3. Когда пользователь нажимает "Отправить результат" (MainButton),
- *    бот получает данные через webhook:
- *    update.web_app_data.data  — JSON строка с результатом
+ *    бот получает данные: update.message.web_app_data.data — JSON строка.
+ *    ВАЖНО: tg.sendData работает только если Web App открыт кнопкой обычной
+ *    клавиатуры (KeyboardButton с web_app), см. bot-example.py. При запуске из
+ *    инлайн-кнопки или кнопки меню кнопка отправки не показывается.
  *
  * ══════════════════════════════════════════════════════════
  */
@@ -73,18 +75,38 @@ function haptic(style) {
   if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred(style || 'light');
 }
 
+// Сообщение пользователю: внутри Telegram — нативный диалог, в браузере — alert
+function notify(msg) {
+  if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast('6.2')) {
+    try { tg.showAlert(msg); return; } catch (e) { /* fallback ниже */ }
+  }
+  alert(msg);
+}
+
+// tg.sendData доступен только если Web App открыт через кнопку обычной клавиатуры
+// (KeyboardButton). При запуске из инлайн-кнопки или кнопки меню есть query_id,
+// и sendData не работает — кнопку отправки тогда не показываем.
+function canSendData() {
+  if (!tg || !tg.MainButton || !tg.initData) return false;
+  return !(tg.initDataUnsafe && tg.initDataUnsafe.query_id);
+}
+
+let mainBtnHandler = null;
+
 function showMainButton(text, data) {
-  if (!tg || !tg.MainButton) return;
+  if (!canSendData()) return;
+  if (mainBtnHandler) tg.MainButton.offClick(mainBtnHandler);
+  // Каждый новый расчёт заменяет обработчик — боту уходит только последний результат
+  mainBtnHandler = () => tg.sendData(JSON.stringify(data));
   tg.MainButton.setText(text);
+  tg.MainButton.onClick(mainBtnHandler);
   tg.MainButton.show();
-  tg.MainButton.onClick(function handler() {
-    tg.MainButton.offClick(handler);
-    tg.sendData(JSON.stringify(data));
-  });
 }
 
 function hideMainButton() {
-  if (tg && tg.MainButton) tg.MainButton.hide();
+  if (!tg || !tg.MainButton) return;
+  if (mainBtnHandler) { tg.MainButton.offClick(mainBtnHandler); mainBtnHandler = null; }
+  tg.MainButton.hide();
 }
 
 // ── NAVIGATION ────────────────────────────────────────────
@@ -130,6 +152,34 @@ const fnSmart = (v, d=4) => {
 const fsSmart = (v, d=4) => typeof v==='number' ? (v>=0?'+':'')+fnSmart(v,d) : String(v);
 const ri = (l, v, c='') => `<div class="result-item"><div class="ri-label">${l}</div><div class="ri-val ${c}">${v}</div></div>`;
 
+// Построчный разбор: одно значение на строку. Пустые строки пропускаются,
+// нераспознанные — возвращаются в bad (номера строк), чтобы не терять их молча.
+function parseLines(text, parser) {
+  const vals = [], bad = [];
+  String(text).split(/\r\n?|\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (!t) return;
+    const v = parser(t);
+    if (isFinite(v)) vals.push(v); else bad.push(i + 1);
+  });
+  return { vals, bad };
+}
+const parseNum = t => {
+  const x = String(t).trim().replace(/\u2212/g, '-').replace(',', '.');
+  return /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(x) ? parseFloat(x) : NaN;
+};
+// Проверка результата parseLines; при ошибке — сообщение и null
+function takeLines(text, parser, what) {
+  const r = parseLines(text, parser);
+  if (r.bad.length) { notify(what + ': не распознаны строки № ' + r.bad.join(', ')); return null; }
+  return r.vals;
+}
+// Числовое поле: пустое/некорректное → NaN
+const numField = id => parseNum(document.getElementById(id).value);
+// Относительная невязка f_s/Σd → «1:N»; практически нулевая → «1:∞»
+const relDen  = T => (isFinite(T) && T > 1e-7) ? Math.round(1/T) : null;
+const relText = T => { const d = relDen(T); return d === null ? '1:∞' : '1:' + d; };
+
 // ── УГЛОВЫЕ НЕВЯЗКИ ───────────────────────────────────────
 let arMode = 'dms'; // 'dms' | 'm'
 
@@ -164,7 +214,7 @@ function secToDMS(totalSec) {
 function formatDMS(totalSec) {
   if (typeof totalSec !== 'number' || !isFinite(totalSec)) return '—″';
   if (totalSec < 0) return '−' + formatDMS(-totalSec);
-  if (totalSec < 60) return totalSec + '″';
+  if (totalSec < 60) return fnSmart(Math.round(totalSec * 10) / 10, 1) + '″';
   const n = secToDMS(totalSec);
   let d = n.d, m = n.m, s = Math.round(n.s);
   if (s >= 60) { s = 0; m++; }
@@ -219,7 +269,7 @@ function calcAR() {
   const isM = arMode === 'm';
   const raw = isM ? document.getElementById('ar-input-m').value : document.getElementById('ar-input-dms').value;
   const v = (isM ? pn(raw) : pnDms(raw)).filter(x => isFinite(x));
-  if (v.length < 2) { alert('Введите хотя бы 2 значения'); return; }
+  if (v.length < 2) { notify('Введите хотя бы 2 значения'); return; }
   const n = v.length;
 
   // 1. Среднее
@@ -320,7 +370,7 @@ function calcAR() {
     <div class="step"><strong>1. Разбор ввода</strong> — где может «съехать»: каждое число между запятыми = одно измерение; минус «−» должен быть обычный (ASCII).<div class="step-f">Распознано n = <strong>${n}</strong> невязок: ${fList} ${uShort}</div></div>
     <div class="step"><strong>2. Сумма и среднее</strong><div class="step-f">[f] = Σf_i = ${fnSmart(sum,4)} &nbsp;→&nbsp; f̄ = [f]/n = ${fnSmart(sum,4)}/${n} = ${arFmt(avg,1)}</div></div>
     <div class="step"><strong>3. Отклонения</strong> v_i = f_i − f̄ (от каждого значения отнимаем среднее).<div class="step-f">[v²] = Σ(v_i²) = ${fnSmart(sumSqDeviations,4)} ${sqUnit}</div></div>
-    <div class="step"><strong>4. Контроль</strong> Σv_i должно быть 0 (следствие определения v_i).<div class="step-f">Σv_i = ${fnSmart(sumV,10)} ${sumV===0?'✓':' (проверьте ввод)'}</div></div>
+    <div class="step"><strong>4. Контроль</strong> Σv_i должно быть 0 (следствие определения v_i).<div class="step-f">Σv_i = ${fnSmart(sumV,10)} ${Math.abs(sumV) <= 1e-9*Math.max(1, Math.abs(sum)) ? '✓' : ' (проверьте ввод)'}</div></div>
     <div class="step"><strong>5. СКП по Бесселю</strong> m = √([v²]/(n−1)) — только по отклонениям, знаменатель (n−1).<div class="step-f">m = √(${fnSmart(sumSqDeviations,4)}/${n-1}) = √(${fnSmart(sumSqDeviations/(n-1),6)}) = ${formatSKP(m,isM)}</div></div>
     <div class="step"><strong>6. Точность СКП и предел</strong><div class="step-f">m_m = m/√(2n) = ${formatSKP(mm,isM)} &nbsp;|&nbsp; Δ_пред = 3m = ${formatSKP(dp,isM)}</div></div>
     <div class="step">Проверка свойств<div class="step-f">Симметрия ${c1?'✓':'✗'} | Ограниченность ${c2?'✓':'✗'} | Уничтожение ${c3?'✓':'✗'}</div></div>`;
@@ -391,18 +441,23 @@ function calcAR() {
 // ── НИВЕЛИРНЫЙ ХОД ───────────────────────────────────────
 function calcLev() {
   haptic('medium');
-  const HA = +document.getElementById('lev-ha').value;
-  const HB = +document.getElementById('lev-hb').value;
-  const hv = pn(document.getElementById('lev-h').value);
-  let dv   = pn(document.getElementById('lev-d').value);
+  const HA = numField('lev-ha');
+  const HB = numField('lev-hb');
+  if (!isFinite(HA) || !isFinite(HB)) { notify('Введите отметки H_A и H_B'); return; }
+  const hv = takeLines(document.getElementById('lev-h').value, parseNum, 'Превышения');
+  if (!hv) return;
+  const dv = takeLines(document.getElementById('lev-d').value, parseNum, 'Длины секций');
+  if (!dv) return;
   const cls = document.getElementById('lev-cls').value;
-  if (!hv.length) { alert('Введите превышения'); return; }
-  if (dv.length !== hv.length) dv = new Array(hv.length).fill(1);
+  if (!hv.length) { notify('Введите превышения'); return; }
+  if (!dv.length) { notify('Введите длины секций (км) — без них нельзя вычислить допуск и поправки'); return; }
+  if (dv.length !== hv.length) { notify('Количество превышений (' + hv.length + ') ≠ количество длин секций (' + dv.length + ')'); return; }
+  if (dv.some(d => d <= 0)) { notify('Длины секций должны быть положительными'); return; }
   const sumH = hv.reduce((a,b) => a+b, 0);
   const sumD = dv.reduce((a,b) => a+b, 0);
-  if (!sumD || !isFinite(sumD)) { alert('Сумма длин секций должна быть положительной'); return; }
   const fh   = sumH - (HB - HA);
-  const k    = cls==='3' ? 5 : cls==='4' ? 10 : 50;
+  // Допуски по Инструкции по нивелированию I–IV классов: II — 5, III — 10, IV — 20, техническое — 50 мм√L
+  const k    = ({ '2': 5, '3': 10, '4': 20, 't': 50 })[cls] || 50;
   const fdop = k * Math.sqrt(sumD);
   const ok   = Math.abs(fh*1000) <= fdop;
   const corr = dv.map(d => -fh*d/sumD);
@@ -434,81 +489,100 @@ function calcLev() {
 // ── ТЕОДОЛИТНЫЙ ХОД ──────────────────────────────────────
 function calcTh() {
   haptic('medium');
-  const a0 = +document.getElementById('th-a0').value;
-  const an = +document.getElementById('th-an').value;
-  const x0 = +document.getElementById('th-x0').value, y0 = +document.getElementById('th-y0').value;
-  const xn = +document.getElementById('th-xn').value, yn = +document.getElementById('th-yn').value;
-  const ang = pn(document.getElementById('th-ang').value);
-  const sid = pn(document.getElementById('th-sides').value);
-  if (!ang.length || !sid.length) { alert('Введите углы и стороны'); return; }
+  const a0 = parseDeg(document.getElementById('th-a0').value);
+  const an = parseDeg(document.getElementById('th-an').value);
+  if (!isFinite(a0) || !isFinite(an)) { notify('Некорректный начальный или конечный дирекционный угол'); return; }
+  const x0 = numField('th-x0'), y0 = numField('th-y0');
+  const xn = numField('th-xn'), yn = numField('th-yn');
+  if (![x0, y0, xn, yn].every(isFinite)) { notify('Введите координаты начальной и конечной точек'); return; }
+  const ang = takeLines(document.getElementById('th-ang').value, parseDeg, 'Углы');
+  if (!ang) return;
+  const sid = takeLines(document.getElementById('th-sides').value, parseNum, 'Стороны');
+  if (!sid) return;
+  if (!ang.length || !sid.length) { notify('Введите углы и стороны'); return; }
   const n = ang.length;
+  // Сторон n: α нач — дирекционный угол первой стороны.
+  // Сторон n−1: α нач — исходное направление, углы измерены и на начальной, и на конечной точке.
+  let dirOff;
+  if (sid.length === n) dirOff = 0;
+  else if (sid.length === n - 1) dirOff = 1;
+  else { notify('Количество сторон (' + sid.length + ') должно быть равно количеству углов (' + n + ') или на 1 меньше'); return; }
+  if (sid.some(d => d <= 0)) { notify('Длины сторон должны быть положительными'); return; }
+  const relLim = +document.getElementById('th-rel').value || 2000;
+
   const sumB = ang.reduce((a,b) => a+b, 0);
-  const thSum = a0 - an + n*180;
+  const base = a0 - an + n*180;
+  const thSum = base + Math.round((sumB - base) / 360) * 360;  // ближайшее к Σβ_изм
   const fbDeg = sumB - thSum;
-  const fdop  = Math.sqrt(n);
-  const fb    = fbDeg * 60;
+  const fdop  = Math.sqrt(n);           // ′
+  const fb    = fbDeg * 60;             // ′
   const dBDeg = -fbDeg / n;
   const adjA  = ang.map(a => a + dBDeg);
-  const alphas = [a0];
-  adjA.forEach(b => {
-    let a = alphas[alphas.length-1] - b + 180;
-    while (a < 0)   a += 360;
-    while (a >= 360) a -= 360;
-    alphas.push(a);
-  });
+  const alphas = [norm360(a0)];
+  adjA.forEach(b => alphas.push(norm360(alphas[alphas.length-1] - b + 180)));
   const R  = Math.PI / 180;
-  const dX = sid.map((d,i) => d * Math.cos(alphas[i]*R));
-  const dY = sid.map((d,i) => d * Math.sin(alphas[i]*R));
+  const dX = sid.map((d,i) => d * Math.cos(alphas[i+dirOff]*R));
+  const dY = sid.map((d,i) => d * Math.sin(alphas[i+dirOff]*R));
   const sumD = sid.reduce((a,b) => a+b, 0);
   const fx = dX.reduce((a,b) => a+b, 0) - (xn-x0);
   const fy = dY.reduce((a,b) => a+b, 0) - (yn-y0);
-  if (!sumD || !isFinite(sumD)) { alert('Сумма сторон должна быть положительной'); return; }
   const fss = Math.sqrt(fx*fx + fy*fy);
   const T   = fss / sumD;
+  const relStr = relText(T);
+  const angOk = Math.abs(fb) <= fdop;
+  const linOk = T <= 1/relLim;
   const cx  = sid.map(d => -fx*d/sumD);
   const cy  = sid.map(d => -fy*d/sumD);
 
-  const fbStr = formatDMS(fb * 60);
   document.getElementById('th-main').innerHTML =
-    ri('f_β', fbStr, Math.abs(fb)>fdop?'r':'') +
+    ri('f_β', formatDMS(fb * 60), angOk?'':'r') +
     ri('Допуск ±1′√n', '±'+fnSmart(fdop,2)+'′') +
-    ri('Угл. невязка', Math.abs(fb)<=fdop?'✓ НОРМА':'✗ ПРЕВЫШЕН', Math.abs(fb)<=fdop?'g':'r') +
+    ri('Угл. невязка', angOk?'✓ НОРМА':'✗ ПРЕВЫШЕН', angOk?'g':'r') +
     ri('f_s (м)', fnSmart(fss,4), 'o') +
-    ri('1/T', Math.round(1/T), 'g') +
+    ri('1/T (допуск 1:'+relLim+')', relStr, linOk?'g':'r') +
+    ri('Лин. невязка', linOk?'✓ НОРМА':'✗ ПРЕВЫШЕН', linOk?'g':'r') +
+    ri('δβ на угол', fnSmart(dBDeg*3600,1)+'″', 'p') +
     ri('Σ длин', fnSmart(sumD,3)+' м');
 
   let rows = '', cx2 = x0, cy2 = y0;
-  rows += `<tr><td class="td-hi">Н</td><td>—</td><td>—</td><td>—</td><td class="td-hi">${fnSmart(x0,3)}</td><td class="td-hi">${fnSmart(y0,3)}</td></tr>`;
+  rows += `<tr><td class="td-hi">Н</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="td-hi">${fnSmart(x0,3)}</td><td class="td-hi">${fnSmart(y0,3)}</td></tr>`;
   sid.forEach((_,i) => {
     cx2 += dX[i]+cx[i]; cy2 += dY[i]+cy[i];
-    rows += `<tr><td>${i+1}</td><td>${fnSmart(alphas[i],2)}°</td><td>${fnSmart(sid[i],2)}</td><td>${fsSmart(dX[i]+cx[i],3)}</td><td class="td-hi">${fnSmart(cx2,3)}</td><td class="td-hi">${fnSmart(cy2,3)}</td></tr>`;
+    rows += `<tr><td>${i+1}</td><td>${fmtDeg(alphas[i+dirOff])}</td><td>${fnSmart(sid[i],2)}</td><td>${fsSmart(dX[i]+cx[i],3)}</td><td>${fsSmart(dY[i]+cy[i],3)}</td><td class="td-hi">${fn(cx2,3)}</td><td class="td-hi">${fn(cy2,3)}</td></tr>`;
   });
   document.getElementById('th-tbl').innerHTML =
-    `<table class="dt"><thead><tr><th>Тч</th><th>α(°)</th><th>d(м)</th><th>ΔX</th><th>X</th><th>Y</th></tr></thead><tbody>${rows}</tbody></table>`;
+    `<table class="dt"><thead><tr><th>Тч</th><th>α</th><th>d(м)</th><th>ΔX′</th><th>ΔY′</th><th>X</th><th>Y</th></tr></thead><tbody>${rows}</tbody></table>`;
   document.getElementById('th-result').classList.remove('hidden');
 
   showMainButton('📤 Отправить результат боту', {
-    type: 'theodolite', fb_min: fnSmart(fb,2), fs_m: fnSmart(fss,4), rel: Math.round(1/T)
+    type: 'theodolite', fb_min: fnSmart(fb,2), fs_m: fnSmart(fss,4),
+    rel: relDen(T), ang_ok: angOk, lin_ok: linOk
   });
 }
 
 // ── ПРЯМАЯ / ОБРАТНАЯ ─────────────────────────────────────
 function calcFwd() {
-  const x1 = +document.getElementById('fx1').value || 0;
-  const y1 = +document.getElementById('fy1').value || 0;
-  const a  = +document.getElementById('fa').value  || 0;
-  const d  = +document.getElementById('fd').value  || 0;
+  const x1 = numField('fx1'), y1 = numField('fy1'), d = numField('fd');
+  const a  = parseDeg(document.getElementById('fa').value);
+  if (![x1, y1, a, d].every(isFinite)) {
+    document.getElementById('fwd-x2').textContent = '—';
+    document.getElementById('fwd-y2').textContent = '—';
+    return;
+  }
   const r  = a * Math.PI / 180;
   document.getElementById('fwd-x2').textContent = fn(x1 + d*Math.cos(r), 4) + ' м';
   document.getElementById('fwd-y2').textContent = fn(y1 + d*Math.sin(r), 4) + ' м';
 }
 
 function calcInv() {
-  const x1 = +document.getElementById('ix1').value || 0;
-  const y1 = +document.getElementById('iy1').value || 0;
-  const x2 = +document.getElementById('ix2').value || 0;
-  const y2 = +document.getElementById('iy2').value || 0;
+  const x1 = numField('ix1'), y1 = numField('iy1');
+  const x2 = numField('ix2'), y2 = numField('iy2');
   const dx = x2-x1, dy = y2-y1;
+  if (!isFinite(dx) || !isFinite(dy) || (dx === 0 && dy === 0)) {
+    document.getElementById('inv-a').textContent = '—';
+    document.getElementById('inv-d').textContent = isFinite(dx) && isFinite(dy) ? '0.0000 м' : '—';
+    return;
+  }
   const dist = Math.sqrt(dx*dx + dy*dy);
   let al = Math.atan2(dy, dx) * 180 / Math.PI;
   if (al < 0) al += 360;
@@ -519,7 +593,10 @@ function calcInv() {
 }
 
 // ── ВЕРОЯТНОСТИ ───────────────────────────────────────────
+// Функция Лапласа Φ(x) = 1/√(2π)·∫₀ˣ e^(−t²/2) dt = erf(x/√2)/2
 function phi(x) {
+  if (x < 0) return -phi(-x);
+  if (x > 8) return 0.5;
   const t = x / Math.sqrt(2);
   let s = 0, tm = t, sg = 1;
   for (let k = 0; k < 80; k++) {
@@ -527,7 +604,7 @@ function phi(x) {
     tm *= t*t / (k+1);
     sg *= -1;
   }
-  return s / Math.sqrt(Math.PI/2) * 0.5;
+  return s / Math.sqrt(Math.PI);  // Σ = (√π/2)·erf(t)
 }
 
 function calcProb() {
@@ -547,19 +624,26 @@ function calcLim() {
 // ── ВЗВЕШЕННЫЕ ────────────────────────────────────────────
 function calcWt() {
   haptic('medium');
-  const lines = document.getElementById('wt-in').value.trim().split('\n');
-  const data  = lines.map(l => {
-    const p = l.replace(/[;,\s]+/g,' ').trim().split(/\s+/);
-    return { l: parseFloat(p[0]), p: parseFloat(p[1]) || 1 };
-  }).filter(d => !isNaN(d.l));
-  if (data.length < 2) { alert('Введите хотя бы 2 строки'); return; }
+  const data = [], bad = [];
+  document.getElementById('wt-in').value.split(/\r\n?|\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (!t) return;
+    // «значение; вес», «значение вес»; запятая допустима как разделитель, если есть «;» — то и как десятичная
+    const parts = (t.includes(';') ? t.split(';') : t.split(/[\s,]+/)).map(x => x.trim()).filter(Boolean);
+    const l = parseNum(parts[0]);
+    const p = parts.length > 1 ? parseNum(parts[1]) : 1;
+    if (parts.length > 2 || !isFinite(l) || !isFinite(p) || p <= 0) bad.push(i + 1);
+    else data.push({ l, p });
+  });
+  if (bad.length) { notify('Не распознаны строки № ' + bad.join(', ') + ' (формат: значение; вес, вес > 0)'); return; }
+  if (data.length < 2) { notify('Введите хотя бы 2 строки'); return; }
+  const n   = data.length;
   const sp  = data.reduce((a,d) => a+d.p, 0);
   const spl = data.reduce((a,d) => a+d.p*d.l, 0);
-  if (!sp || !isFinite(sp) || sp <= 1) { alert('Сумма весов должна быть больше 1 (для оценки СКП)'); return; }
   const mean = spl / sp;
   const v    = data.map(d => d.l - mean);
   const spv2 = data.reduce((a,d,i) => a+d.p*v[i]*v[i], 0);
-  const mu   = Math.sqrt(spv2 / (sp-1));
+  const mu   = Math.sqrt(spv2 / (n-1));
   const mx   = mu / Math.sqrt(sp);
 
   document.getElementById('wt-main').innerHTML =
@@ -578,8 +662,8 @@ function calcWt() {
     `<table class="dt"><thead><tr><th>l_i</th><th>p_i</th><th>v_i</th><th>p·v²</th></tr></thead><tbody>${rows}</tbody></table>`;
   document.getElementById('wt-f').innerHTML =
     `<span class="hi">x̄</span>=${fnSmart(spl,4)}/${fnSmart(sp,2)}=${fnSmart(mean,5)}<br>` +
-    `<span class="hi2">μ</span>=√(${fnSmart(spv2,4)}/${fnSmart(sp-1,2)})=±${fnSmart(mu,5)}<br>` +
-    `<span class="hi">m_x̄</span>=±${fnSmart(mx,5)}`;
+    `<span class="hi2">μ</span>=√([pv²]/(n−1))=√(${fnSmart(spv2,4)}/${n-1})=±${fnSmart(mu,5)}<br>` +
+    `<span class="hi">m_x̄</span>=μ/√[p]=±${fnSmart(mu,5)}/√${fnSmart(sp,2)}=±${fnSmart(mx,5)}`;
   document.getElementById('wt-result').classList.remove('hidden');
 
   showMainButton('📤 Отправить результат боту', {
@@ -602,12 +686,12 @@ function buildLaplace() {
 }
 
 // ── ВЕДОМОСТЬ КООРДИНАТ ───────────────────────────────────
-let vedAngDir = 'right'; // 'right' | 'left' — только для разомкнутого хода
+let vedAngDir = 'right'; // 'right' | 'left'
 
 function vedSetAngDir(dir, btn) {
   vedAngDir = dir;
-  document.querySelectorAll('#ved-open-fields .seg-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#ved-dir-right, #ved-dir-left').forEach(b => b.classList.remove('active'));
+  (btn || document.getElementById(dir === 'left' ? 'ved-dir-left' : 'ved-dir-right')).classList.add('active');
   const lbl = document.getElementById('ved-ang-label');
   if (lbl) lbl.textContent = dir === 'left'
     ? 'Левые углы β — каждый с новой строки'
@@ -621,7 +705,7 @@ function vedCalcAlpha() {
   const y2 = +document.getElementById('ved-ay2').value;
   const dx = x2 - x1, dy = y2 - y1;
   if (!isFinite(dx) || !isFinite(dy) || (dx === 0 && dy === 0)) {
-    alert('Введите координаты двух различных точек'); return;
+    notify('Введите координаты двух различных точек'); return;
   }
   let al = Math.atan2(dy, dx) * 180 / Math.PI;
   if (al < 0) al += 360;
@@ -647,24 +731,19 @@ function vedToggleType() {
   if (lbl) lbl.textContent = t === 'open'
     ? 'α нач — дирекц. угол исходного направления (ГГ ММ СС)'
     : 'α нач — дирекц. угол первой стороны (ГГ ММ СС)';
-  if (t === 'closed') {
-    vedAngDir = 'right';
-    const rb = document.getElementById('ved-dir-right'), lb = document.getElementById('ved-dir-left');
-    if (rb) rb.classList.add('active');
-    if (lb) lb.classList.remove('active');
-    const angLbl = document.getElementById('ved-ang-label');
-    if (angLbl) angLbl.textContent = 'Правые углы β — каждый с новой строки';
-  }
 }
 
+// Угол: «ГГ ММ СС.с», «ГГ°ММ′СС″» или десятичные градусы. Некорректный ввод → NaN.
 function parseDeg(s) {
-  s = String(s).trim().replace(/[°°'′″"]/g,' ').replace(/\s+/g,' ').trim();
-  const parts = s.split(' ').map(Number).filter(v => !isNaN(v));
-  if (!parts.length) return NaN;
-  const sign = parts[0]<0 ? -1 : 1, a = Math.abs(parts[0]);
+  s = String(s).trim().replace(/\u2212/g,'-').replace(/,/g,'.')
+    .replace(/[°'′″"]/g,' ').replace(/\s+/g,' ').trim();
+  if (!s) return NaN;
+  const parts = s.split(' ').map(parseNum);
+  if (parts.length > 3 || parts.some(v => !isFinite(v))) return NaN;
   if (parts.length === 1) return parts[0];
-  if (parts.length === 2) return sign*(a + parts[1]/60);
-  return sign*(a + parts[1]/60 + parts[2]/3600);
+  if (parts.slice(1).some(v => v < 0 || v >= 60)) return NaN;
+  const val = Math.abs(parts[0]) + parts[1]/60 + (parts[2] || 0)/3600;
+  return /^-/.test(s) ? -val : val;
 }
 
 function fmtDeg(deg) {
@@ -689,6 +768,7 @@ function norm360(a) { while (a<0) a+=360; while (a>=360) a-=360; return a; }
 function vedExample() {
   document.getElementById('ved-type').value = 'closed';
   vedToggleType();
+  vedSetAngDir('right');
   document.getElementById('ved-x0').value = '1000.00';
   document.getElementById('ved-y0').value = '1000.00';
   document.getElementById('ved-a0').value = '0 00 00';
@@ -700,23 +780,33 @@ function vedExample() {
 function calcVed() {
   haptic('medium');
   const type = document.getElementById('ved-type').value;
-  const x0 = +document.getElementById('ved-x0').value;
-  const y0 = +document.getElementById('ved-y0').value;
+  const x0 = numField('ved-x0');
+  const y0 = numField('ved-y0');
+  if (!isFinite(x0) || !isFinite(y0)) { notify('Введите начальные координаты X, Y'); return; }
   const a0 = parseDeg(document.getElementById('ved-a0').value);
-  if (isNaN(a0)) { alert('Некорректный начальный дирекционный угол'); return; }
+  if (isNaN(a0)) { notify('Некорректный начальный дирекционный угол'); return; }
 
-  const ang = document.getElementById('ved-ang').value.trim().split('\n')
-    .map(l => parseDeg(l.trim())).filter(v => !isNaN(v));
-  const sid = document.getElementById('ved-sides').value.trim().split('\n')
-    .map(l => parseFloat(l.trim())).filter(v => !isNaN(v));
-  if (!ang.length || !sid.length) { alert('Введите углы и стороны'); return; }
-  if (ang.length !== sid.length) { alert('Количество углов ('+ang.length+') ≠ количество сторон ('+sid.length+')'); return; }
+  const ang = takeLines(document.getElementById('ved-ang').value, parseDeg, 'Углы');
+  if (!ang) return;
+  const sid = takeLines(document.getElementById('ved-sides').value, parseNum, 'Стороны');
+  if (!sid) return;
+  if (!ang.length || !sid.length) { notify('Введите углы и стороны'); return; }
+  // Замкнутый: сторон = углов. Разомкнутый: сторон = углов (αₙ — направление последней стороны)
+  // или на 1 меньше (угол измерен и на конечной точке, αₙ — исходное конечное направление).
+  if (type === 'closed' && ang.length !== sid.length) {
+    notify('Замкнутый ход: количество углов ('+ang.length+') ≠ количество сторон ('+sid.length+')'); return;
+  }
+  if (type === 'open' && sid.length !== ang.length && sid.length !== ang.length - 1) {
+    notify('Разомкнутый ход: сторон ('+sid.length+') должно быть столько же, сколько углов ('+ang.length+'), или на 1 меньше'); return;
+  }
+  if (sid.some(d => d <= 0)) { notify('Длины сторон должны быть положительными'); return; }
+  const relLim = +document.getElementById('ved-rel').value || 2000;
 
-  const n = ang.length, R = Math.PI/180;
+  const n = ang.length, m = sid.length, R = Math.PI/180;
   const bSum = ang.reduce((a,b) => a+b, 0);
 
-  // Направление углов: для замкнутого — всегда правые; для разомкнутого — по переключателю
-  const angDir = type === 'open' ? vedAngDir : 'right';
+  const angDir = vedAngDir;
+  const angWord = angDir === 'right' ? 'правые' : 'левые';
 
   // Флаги наличия опорных конечных данных (только для разомкнутого хода)
   const hasAngle  = type === 'closed' || document.getElementById('ved-has-an').checked;
@@ -738,7 +828,7 @@ function calcVed() {
     dBetaSec = dBetaDeg * 3600;
   } else if (hasAngle) {
     anDeg = parseDeg(document.getElementById('ved-an').value);
-    if (isNaN(anDeg)) { alert('Некорректный конечный дирекционный угол'); return; }
+    if (isNaN(anDeg)) { notify('Некорректный конечный дирекционный угол'); return; }
     // Правые: Σβ = α₀ − αₙ + n·180°; Левые: Σβ = αₙ − α₀ + n·180°
     const base = angDir === 'right' ? (a0 - anDeg + n*180) : (anDeg - a0 + n*180);
     const k = Math.round((bSum - base) / 360);
@@ -770,15 +860,16 @@ function calcVed() {
   const dY = sid.map((d,i) => d * Math.sin(alphas[i+dirOff]*R));
   const sumD = sid.reduce((a,b) => a+b, 0);
 
-  if (!sumD || !isFinite(sumD)) { alert('Сумма сторон должна быть положительной'); return; }
+  if (!sumD || !isFinite(sumD)) { notify('Сумма сторон должна быть положительной'); return; }
 
   let fx = 0, fy = 0;
   if (type === 'closed') {
     fx = dX.reduce((a,b) => a+b, 0);
     fy = dY.reduce((a,b) => a+b, 0);
   } else if (hasEndXY) {
-    const xn = +document.getElementById('ved-xn').value;
-    const yn = +document.getElementById('ved-yn').value;
+    const xn = numField('ved-xn');
+    const yn = numField('ved-yn');
+    if (!isFinite(xn) || !isFinite(yn)) { notify('Введите конечные координаты X, Y (или снимите галочку)'); return; }
     fx = dX.reduce((a,b) => a+b, 0) - (xn - x0);
     fy = dY.reduce((a,b) => a+b, 0) - (yn - y0);
   }
@@ -786,13 +877,13 @@ function calcVed() {
 
   const fs = Math.sqrt(fx*fx + fy*fy);
   const T = fs / sumD;
-  const linOk = hasEndXY || type === 'closed' ? T < 1/1000 : null;
+  const linOk = hasEndXY || type === 'closed' ? T <= 1/relLim : null;
 
   const vx = sid.map(d => -fx*d/sumD);
   const vy = sid.map(d => -fy*d/sumD);
 
   const coords = [[x0,y0]];
-  for (let i = 0; i < n; i++) coords.push([coords[i][0]+dX[i]+vx[i], coords[i][1]+dY[i]+vy[i]]);
+  for (let i = 0; i < m; i++) coords.push([coords[i][0]+dX[i]+vx[i], coords[i][1]+dY[i]+vy[i]]);
 
   const angKnown = angOk !== null;
   const linKnown = linOk !== null;
@@ -802,10 +893,10 @@ function calcVed() {
     ri('Допуск ±1′√n', '±'+fnSmart(fdopMin,2)+'′', 'o') +
     ri('Угл. невязка', angKnown ? (angOk?'✓ НОРМА':'✗ ПРЕВЫШЕН') : 'α_кон не задан', angKnown?(angOk?'g':'r'):'') +
     ri('f_s (м)', linKnown ? fnSmart(fs,4) : '—', 'o') +
-    ri('1/T', linKnown&&isFinite(T)&&T>0 ? '1:'+Math.round(1/T) : (linKnown?'—':'XY_кон не заданы'), linKnown&&linOk?'g':linKnown?'r':'') +
+    ri('1/T (допуск 1:'+relLim+')', linKnown ? relText(T) : 'XY_кон не заданы', linKnown&&linOk?'g':linKnown?'r':'') +
     ri('Σ длин', fnSmart(sumD,3)+' м') +
     ri('δβ на угол', angKnown ? fnSmart(dBetaSec,1)+'″' : '0″ (нет увязки)', 'p') +
-    ri('n точек', n);
+    ri('Углов / сторон', n + ' / ' + m);
 
   document.getElementById('ved-checks').innerHTML = `
     <div class="check-item ${angKnown?(angOk?'check-pass':'check-fail'):'check-neutral'}">
@@ -817,7 +908,7 @@ function calcVed() {
     <div class="check-item ${linKnown?(linOk?'check-pass':'check-fail'):'check-neutral'}">
       <span class="check-icon">${linKnown?(linOk?'✅':'❌'):'ℹ️'}</span>
       <div><strong>Линейная невязка</strong>${linKnown
-        ? `f_s = ${fnSmart(fs,4)} м | 1:${isFinite(T)&&T>0?Math.round(1/T):'∞'} — ${linOk?'НОРМА':'ПРЕВЫШЕНА'}`
+        ? `f_s = ${fnSmart(fs,4)} м | ${relText(T)} (допуск 1:${relLim}) — ${linOk?'НОРМА':'ПРЕВЫШЕНА'}`
         : 'X_кон/Y_кон не заданы — линейная увязка не выполняется (координаты без поправки)'}</div>
     </div>`;
 
@@ -842,7 +933,7 @@ function calcVed() {
   }
 
   let bowRows = '';
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < m; i++) {
     bowRows += `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
       <span style="color:var(--accent)">Ст.${i+1}:</span>
       vΔX = −${fnSmart(fx,4)}·${fnSmart(sid[i],2)}/${fnSmart(sumD,2)} = <strong>${fsSmart(vx[i],4)} м</strong> &nbsp;|&nbsp;
@@ -858,13 +949,13 @@ function calcVed() {
         <div class="ar-annot-item">
           <strong>Сумма измеренных углов</strong>
           <div class="ar-annot-f">Σβ_изм = ${ang.map(fmtDegR).join(' + ')} = <strong>${fmtDegR(bSum)}</strong></div>
-          <div class="ar-annot-why">Складываем все введённые правые углы.</div>
+          <div class="ar-annot-why">Складываем все введённые ${angWord} углы.</div>
         </div>
         <div class="ar-annot-item">
           <strong>Теоретическая сумма</strong>
           <div class="ar-annot-f">${thFormula}</div>
           <div class="ar-annot-why">${closedLabel
-            ? 'Для замкнутого хода выбираем n·180°±k·360°, ближайшее к Σβ_изм. Для правых внутренних углов k = −1, давая (n−2)·180°.'
+            ? 'Для замкнутого хода выбираем n·180°±k·360°, ближайшее к Σβ_изм. Для внутренних углов это (n−2)·180°, для внешних — (n+2)·180°.'
             : angDir === 'right'
               ? 'Правые углы (разомкнутый): Σβ_пр = α₀ − αₙ + n·180°. Формула выводится из рекуррентного соотношения α_{i+1} = α_i − β + 180°.'
               : 'Левые углы (разомкнутый): Σβ_лев = αₙ − α₀ + n·180°. Формула выводится из рекуррентного соотношения α_{i+1} = α_i + β − 180°.'}</div>
@@ -922,7 +1013,7 @@ function calcVed() {
             ? `f_X = ΣΔX = <strong>${fsSmart(fx,4)} м</strong> &nbsp;|&nbsp; f_Y = ΣΔY = <strong>${fsSmart(fy,4)} м</strong>`
             : `f_X = ΣΔX−(Xₙ−X₀) = <strong>${fsSmart(fx,4)} м</strong> &nbsp;|&nbsp; f_Y = ΣΔY−(Yₙ−Y₀) = <strong>${fsSmart(fy,4)} м</strong>`}</div>
           <div class="ar-annot-f">f_s = √(f_X²+f_Y²) = √(${fnSmart(fx*fx,6)}+${fnSmart(fy*fy,6)}) = <strong>${fnSmart(fs,4)} м</strong></div>
-          <div class="ar-annot-f">Относительная точность: 1/T = Σd/f_s = ${fnSmart(sumD,2)}/${fnSmart(fs,4)} = <strong>1:${isFinite(T)&&T>0?Math.round(1/T):'∞'}</strong></div>
+          <div class="ar-annot-f">Относительная точность: 1/T = Σd/f_s = ${fnSmart(sumD,2)}/${fnSmart(fs,4)} = <strong>${relText(T)}</strong></div>
           <div class="ar-annot-why">${closedLabel
             ? 'Для замкнутого хода ΣΔX и ΣΔY должны быть нулём. Реальный остаток — линейная невязка.'
             : 'Сравниваем сумму приращений с фактической разностью координат конечных точек.'}</div>
@@ -970,7 +1061,7 @@ function calcVed() {
 
   // Таблица координат
   let cr = `<tr><td class="td-hi">Н</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td class="td-hi">${fn(x0,3)}</td><td class="td-hi">${fn(y0,3)}</td></tr>`;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < m; i++) {
     cr += `<tr><td class="td-hi">${i+1}</td><td>${fnSmart(sid[i],2)}</td><td>${fsSmart(dX[i],3)}</td><td>${vx[i]>=0?'+':''}${fnSmart(vx[i]*1000,1)}мм</td><td>${fsSmart(dX[i]+vx[i],3)}</td><td>${fsSmart(dY[i],3)}</td><td>${vy[i]>=0?'+':''}${fnSmart(vy[i]*1000,1)}мм</td><td class="td-hi">${fn(coords[i+1][0],3)}</td><td class="td-hi">${fn(coords[i+1][1],3)}</td></tr>`;
   }
   cr += `<tr style="color:var(--accent);font-weight:600"><td>Σ</td><td>${fnSmart(sumD,2)}</td><td>${fsSmart(sdX,3)}</td><td>${(-fx*1000>=0?'+':'')}${fnSmart(-fx*1000,1)}мм</td><td>${fsSmart(sdX-fx,3)}</td><td>${fsSmart(sdY,3)}</td><td>${(-fy*1000>=0?'+':'')}${fnSmart(-fy*1000,1)}мм</td><td>—</td><td>—</td></tr>`;
@@ -982,11 +1073,49 @@ function calcVed() {
   showMainButton('📤 Отправить результат боту', {
     type: 'coordinate_schedule',
     fb_sec: fnSmart(fBetaSec,1), fs_m: fnSmart(fs,4),
-    rel: isFinite(T)&&T>0 ? Math.round(1/T) : null,
+    rel: relDen(T),
     ang_ok: angOk, lin_ok: linOk,
     coords: coords.map(c => ({ x: fn(c[0],3), y: fn(c[1],3) }))
   });
 }
 
+// ── СОХРАНЕНИЕ ВВОДА ──────────────────────────────────────
+// Введённые данные хранятся локально, чтобы не терялись при закрытии Web App.
+const STORE_KEY = 'geocalc.inputs.v1';
+
+function loadStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; }
+}
+
+function saveStore() {
+  const data = { _arMode: arMode, _vedAngDir: vedAngDir };
+  document.querySelectorAll('.app input[id], .app textarea[id], .app select[id]').forEach(el => {
+    data[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch (e) { /* хранилище недоступно */ }
+}
+
+function restoreStore() {
+  const data = loadStore();
+  document.querySelectorAll('.app input[id], .app textarea[id], .app select[id]').forEach(el => {
+    if (!(el.id in data)) return;
+    if (el.type === 'checkbox') el.checked = !!data[el.id];
+    else if (el.tagName === 'SELECT' && ![...el.options].some(o => o.value === data[el.id])) return;
+    else el.value = data[el.id];
+  });
+  if (data._arMode === 'm') switchArMode('m', document.getElementById('ar-tab-m'));
+  if (data._vedAngDir === 'left') vedSetAngDir('left');
+  document.getElementById('pb-kr').value = document.getElementById('pb-k').value;
+  vedToggleType();
+  vedToggleEndFields();
+}
+
 // ── INIT ──────────────────────────────────────────────────
-window.onload = () => { buildLaplace(); calcProb(); calcLim(); calcFwd(); calcInv(); };
+window.onload = () => {
+  restoreStore();
+  const app = document.querySelector('.app');
+  app.addEventListener('input', saveStore);
+  app.addEventListener('change', saveStore);
+  app.addEventListener('click', e => { if (e.target.closest('.seg-btn')) saveStore(); });
+  buildLaplace(); calcProb(); calcLim(); calcFwd(); calcInv();
+};

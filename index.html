@@ -33,7 +33,7 @@
   </div>
   <div class="header-right">
     <span class="header-user" id="tg-username"></span>
-    <div class="header-pill">v4.0</div>
+    <div class="header-pill">v4.1</div>
   </div>
 </header>
 
@@ -121,7 +121,7 @@
     </div>
     <div class="card">
       <div class="card-title"><span class="ct-icon">⊟</span>Параметры</div>
-      <div class="info"><strong>Подсказка:</strong> H_A и H_B — в метрах. Превышения h_i и длины d_i — с новой строки; разделители между числами в строке: пробел или запятая; дробная часть — точка.</div>
+      <div class="info"><strong>Подсказка:</strong> H_A и H_B — в метрах. Превышения h_i (м) и длины секций d_i (км) — по одному значению на строку, количество должно совпадать. L в допуске — длина хода в км.</div>
       <div class="field-row">
         <div class="field"><label>H_A (м)</label><input type="number" id="lev-ha" value="100.000" step="0.001"></div>
         <div class="field"><label>H_B (м)</label><input type="number" id="lev-hb" value="98.325" step="0.001"></div>
@@ -129,8 +129,9 @@
       <div class="field">
         <label>Класс нивелирования</label>
         <select id="lev-cls">
-          <option value="3">III класс — 5√L мм</option>
-          <option value="4" selected>IV класс — 10√L мм</option>
+          <option value="2">II класс — 5√L мм</option>
+          <option value="3">III класс — 10√L мм</option>
+          <option value="4" selected>IV класс — 20√L мм</option>
           <option value="t">Технич. — 50√L мм</option>
         </select>
       </div>
@@ -162,10 +163,10 @@
     </div>
     <div class="card">
       <div class="card-title"><span class="ct-icon">∠</span>Опорные данные</div>
-      <div class="info"><strong>Подсказка:</strong> Углы β — правые, в градусах. Разделители — пробел или запятая; дробная часть — точка. Углы и стороны — по одному на строку, в порядке хода.</div>
+      <div class="info"><strong>Подсказка:</strong> Углы β — правые. Формат: <strong>ГГ ММ СС</strong> через пробел (178 19 12) или десятичные градусы (178.32 = 178°19′12″). Углы и стороны — по одному на строку, в порядке хода. Сторон столько же, сколько углов (α нач — угол первой стороны), или на 1 меньше (α нач и α кон — исходные направления, углы измерены на обеих конечных точках).</div>
       <div class="field-row">
-        <div class="field"><label>α нач (°)</label><input type="number" id="th-a0" value="62.5" step="0.01"></div>
-        <div class="field"><label>α кон (°)</label><input type="number" id="th-an" value="124.75" step="0.01"></div>
+        <div class="field"><label>α нач (ГГ ММ СС)</label><input type="text" inputmode="decimal" id="th-a0" value="62 30 00"></div>
+        <div class="field"><label>α кон (ГГ ММ СС)</label><input type="text" inputmode="decimal" id="th-an" value="124 45 00"></div>
       </div>
       <div class="field-row">
         <div class="field"><label>X нач (м)</label><input type="number" id="th-x0" value="1000.00" step="0.01"></div>
@@ -176,12 +177,21 @@
         <div class="field"><label>Y кон (м)</label><input type="number" id="th-yn" value="1352.80" step="0.01"></div>
       </div>
       <div class="field">
-        <label>Правые углы β (°) — каждый с новой строки</label>
-        <textarea id="th-ang" placeholder="178.32&#10;182.15&#10;175.48&#10;186.70&#10;177.90"></textarea>
+        <label>Правые углы β — каждый с новой строки</label>
+        <textarea id="th-ang" placeholder="178 19 12&#10;182 09 00&#10;175 28 48&#10;186 42 00&#10;177 54 00"></textarea>
       </div>
       <div class="field">
         <label>Стороны d (м) — каждая с новой строки</label>
         <textarea id="th-sides" placeholder="125.40&#10;98.70&#10;143.20&#10;87.50&#10;112.80" style="min-height:72px"></textarea>
+      </div>
+      <div class="field">
+        <label>Допустимая относительная невязка</label>
+        <select id="th-rel">
+          <option value="1000">1:1000</option>
+          <option value="2000" selected>1:2000</option>
+          <option value="3000">1:3000</option>
+          <option value="5000">1:5000</option>
+        </select>
       </div>
       <button class="btn btn-primary" onclick="calcTh()">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -211,14 +221,14 @@
     <div class="tab-pane active" id="tk-t0">
       <div class="card">
         <div class="card-title"><span class="ct-icon">→</span>Прямая задача</div>
-        <div class="info"><strong>Подсказка:</strong> X₁, Y₁ и d в <strong>метрах</strong>. α — дирекционный угол в <strong>градусах</strong> (0…360°).</div>
+        <div class="info"><strong>Подсказка:</strong> X₁, Y₁ и d в <strong>метрах</strong>. α — дирекционный угол: <strong>ГГ ММ СС</strong> через пробел или десятичные градусы.</div>
         <div class="formula-card">X₂ = X₁ + <span class="fc-hi">d·cos(α)</span><br>Y₂ = Y₁ + <span class="fc-hi">d·sin(α)</span></div>
         <div class="field-row">
           <div class="field"><label>X₁ (м)</label><input type="number" id="fx1" value="1000" step="0.01" oninput="calcFwd()"></div>
           <div class="field"><label>Y₁ (м)</label><input type="number" id="fy1" value="500" step="0.01" oninput="calcFwd()"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>α (°)</label><input type="number" id="fa" value="45" step="0.01" min="0" max="360" oninput="calcFwd()"></div>
+          <div class="field"><label>α (ГГ ММ СС)</label><input type="text" inputmode="decimal" id="fa" value="45 00 00" oninput="calcFwd()"></div>
           <div class="field"><label>d (м)</label><input type="number" id="fd" value="100" step="0.01" min="0" oninput="calcFwd()"></div>
         </div>
         <div class="live-calc">
@@ -331,7 +341,7 @@
     </div>
     <div class="guide-item">
       <div class="guide-item-title">Нивелирный ход</div>
-      <div class="formula-card" style="margin-bottom:0">f<sub>h</sub> = [h]−(H<sub>B</sub>−H<sub>A</sub>)<br>f<sub>доп</sub> = <span class="fc-hi">10</span>·√<span class="fc-v">L</span> мм (IV) | <span class="fc-hi">5</span>·√<span class="fc-v">L</span> мм (III)<br>δh<sub>i</sub> = −f<sub>h</sub>·d<sub>i</sub>/[d]</div>
+      <div class="formula-card" style="margin-bottom:0">f<sub>h</sub> = [h]−(H<sub>B</sub>−H<sub>A</sub>)<br>f<sub>доп</sub> = <span class="fc-hi">20</span>·√<span class="fc-v">L</span> мм (IV) | <span class="fc-hi">10</span>·√<span class="fc-v">L</span> мм (III)<br>δh<sub>i</sub> = −f<sub>h</sub>·d<sub>i</sub>/[d]</div>
     </div>
     <div class="guide-item">
       <div class="guide-item-title">Теодолитный ход</div>
@@ -339,7 +349,7 @@
     </div>
     <div class="guide-item">
       <div class="guide-item-title">Взвешенные измерения</div>
-      <div class="formula-card" style="margin-bottom:0">x̄=[p·l]/[p]<br>μ=√([p·v²]/([p]−1))<br>m<sub>x̄</sub>=μ/√[p]</div>
+      <div class="formula-card" style="margin-bottom:0">x̄=[p·l]/[p]<br>μ=√([p·v²]/(n−1))<br>m<sub>x̄</sub>=μ/√[p]</div>
     </div>
     <div class="guide-item">
       <div class="guide-item-title">Прямая / Обратная задачи</div>
@@ -364,7 +374,7 @@
     </div>
     <div class="card">
       <div class="card-title"><span class="ct-icon">⊙</span>Исходные данные</div>
-      <div class="info"><strong>Углы β</strong> — правые горизонтальные. Формат: <strong>ГГ ММ СС.с</strong> (через пробел) или десятичные градусы. Один угол — одна строка.</div>
+      <div class="info"><strong>Углы β</strong> — горизонтальные, правые или левые по ходу. Формат: <strong>ГГ ММ СС.с</strong> (через пробел) или десятичные градусы. Один угол — одна строка.</div>
       <div class="field-row">
         <div class="field"><label>X нач (м)</label><input type="number" id="ved-x0" value="1000.00" step="0.01"></div>
         <div class="field"><label>Y нач (м)</label><input type="number" id="ved-y0" value="1000.00" step="0.01"></div>
@@ -392,14 +402,15 @@
           </div>
         </details>
       </div>
-      <div id="ved-open-fields" style="display:none">
-        <div class="field" style="margin-bottom:10px">
-          <label>Направление измеренных углов</label>
-          <div class="seg-ctrl" style="margin-top:6px">
-            <button class="seg-btn active" id="ved-dir-right" onclick="vedSetAngDir('right',this)">Правые (β_пр)</button>
-            <button class="seg-btn" id="ved-dir-left" onclick="vedSetAngDir('left',this)">Левые (β_лев)</button>
-          </div>
+      <div class="field" style="margin-bottom:10px">
+        <label>Направление измеренных углов</label>
+        <div class="seg-ctrl" style="margin-top:6px">
+          <button class="seg-btn active" id="ved-dir-right" onclick="vedSetAngDir('right',this)">Правые (β_пр)</button>
+          <button class="seg-btn" id="ved-dir-left" onclick="vedSetAngDir('left',this)">Левые (β_лев)</button>
         </div>
+      </div>
+      <div id="ved-open-fields" style="display:none">
+        <div class="info" style="margin-bottom:8px">Сторон столько же, сколько углов (α кон — направление последней стороны), или на 1 меньше (угол измерен и на конечной точке, α кон — исходное конечное направление).</div>
         <label class="check-toggle">
           <input type="checkbox" id="ved-has-an" checked onchange="vedToggleEndFields()">
           <span>Конечный дирекционный угол α_кон известен</span>
@@ -424,6 +435,15 @@
       <div class="field">
         <label>Стороны d (м) — каждая с новой строки</label>
         <textarea id="ved-sides" placeholder="125.40&#10;98.70&#10;143.20&#10;87.50&#10;112.80" style="min-height:72px"></textarea>
+      </div>
+      <div class="field">
+        <label>Допустимая относительная невязка</label>
+        <select id="ved-rel">
+          <option value="1000">1:1000</option>
+          <option value="2000" selected>1:2000</option>
+          <option value="3000">1:3000</option>
+          <option value="5000">1:5000</option>
+        </select>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="calcVed()">
