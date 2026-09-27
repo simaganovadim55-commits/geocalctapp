@@ -1,36 +1,8 @@
 /*
  * GeoCalculator — Telegram Web App
- * ══════════════════════════════════════════════════════════
- *
- * КАК ПОДКЛЮЧИТЬ TELEGRAM БОТА:
- *
- * 1. Создайте бота через @BotFather и получите токен.
- * 2. Укажите Web App URL командой /setmenubutton или через инлайн-кнопку:
- *
- *    // Python (python-telegram-bot):
- *    await bot.send_message(
- *      chat_id=chat_id,
- *      text="Открыть калькулятор:",
- *      reply_markup=InlineKeyboardMarkup([[
- *        InlineKeyboardButton("🧮 GeoCalculator",
- *          web_app=WebAppInfo(url="https://YOUR-LOGIN.github.io/REPO/"))
- *      ]])
- *    )
- *
- *    // Node.js (telegraf):
- *    ctx.reply("Открыть:", {
- *      reply_markup: { inline_keyboard: [[
- *        { text: "🧮 GeoCalculator", web_app: { url: "https://YOUR-LOGIN.github.io/REPO/" } }
- *      ]]}
- *    });
- *
- * 3. Когда пользователь нажимает "Отправить результат" (MainButton),
- *    бот получает данные: update.message.web_app_data.data — JSON строка.
- *    ВАЖНО: tg.sendData работает только если Web App открыт кнопкой обычной
- *    клавиатуры (KeyboardButton с web_app), см. bot-example.py. При запуске из
- *    инлайн-кнопки или кнопки меню кнопка отправки не показывается.
- *
- * ══════════════════════════════════════════════════════════
+ * Статическое приложение (GitHub Pages). Открывается кнопкой меню бота,
+ * настроенной в @BotFather: Bot Settings → Menu Button → ссылка на Pages.
+ * В браузере работает как обычная веб-страница.
  */
 
 // ── TELEGRAM WEB APP INIT ─────────────────────────────────
@@ -83,32 +55,6 @@ function notify(msg) {
   alert(msg);
 }
 
-// tg.sendData доступен только если Web App открыт через кнопку обычной клавиатуры
-// (KeyboardButton). При запуске из инлайн-кнопки или кнопки меню есть query_id,
-// и sendData не работает — кнопку отправки тогда не показываем.
-function canSendData() {
-  if (!tg || !tg.MainButton || !tg.initData) return false;
-  return !(tg.initDataUnsafe && tg.initDataUnsafe.query_id);
-}
-
-let mainBtnHandler = null;
-
-function showMainButton(text, data) {
-  if (!canSendData()) return;
-  if (mainBtnHandler) tg.MainButton.offClick(mainBtnHandler);
-  // Каждый новый расчёт заменяет обработчик — боту уходит только последний результат
-  mainBtnHandler = () => tg.sendData(JSON.stringify(data));
-  tg.MainButton.setText(text);
-  tg.MainButton.onClick(mainBtnHandler);
-  tg.MainButton.show();
-}
-
-function hideMainButton() {
-  if (!tg || !tg.MainButton) return;
-  if (mainBtnHandler) { tg.MainButton.offClick(mainBtnHandler); mainBtnHandler = null; }
-  tg.MainButton.hide();
-}
-
 // ── NAVIGATION ────────────────────────────────────────────
 function goPage(id, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -116,7 +62,6 @@ function goPage(id, btn) {
   document.getElementById('page-' + id).classList.add('active');
   btn.classList.add('active');
   document.querySelector('.app').scrollTop = 0;
-  hideMainButton();
   haptic('light');
 }
 
@@ -431,11 +376,6 @@ function calcAR() {
     </div>`;
 
   document.getElementById('ar-result').classList.remove('hidden');
-
-  showMainButton('📤 Отправить результат боту', {
-    type: 'angular_residuals',
-    n, m: fnSmart(m,4), mm: fnSmart(mm,4), dp: fnSmart(dp,4), unit: uShort
-  });
 }
 
 // ── НИВЕЛИРНЫЙ ХОД ───────────────────────────────────────
@@ -480,10 +420,6 @@ function calcLev() {
   document.getElementById('lev-tbl').innerHTML =
     `<table class="dt"><thead><tr><th>Тч</th><th>h_i</th><th>Попр.</th><th>h_исп</th><th>H (м)</th></tr></thead><tbody>${rows}</tbody></table>`;
   document.getElementById('lev-result').classList.remove('hidden');
-
-  showMainButton('📤 Отправить результат боту', {
-    type: 'leveling', fh_mm: fnSmart(fh*1000,1), fdop_mm: fnSmart(fdop,1), ok
-  });
 }
 
 // ── ТЕОДОЛИТНЫЙ ХОД ──────────────────────────────────────
@@ -553,11 +489,6 @@ function calcTh() {
   document.getElementById('th-tbl').innerHTML =
     `<table class="dt"><thead><tr><th>Тч</th><th>α</th><th>d(м)</th><th>ΔX′</th><th>ΔY′</th><th>X</th><th>Y</th></tr></thead><tbody>${rows}</tbody></table>`;
   document.getElementById('th-result').classList.remove('hidden');
-
-  showMainButton('📤 Отправить результат боту', {
-    type: 'theodolite', fb_min: fnSmart(fb,2), fs_m: fnSmart(fss,4),
-    rel: relDen(T), ang_ok: angOk, lin_ok: linOk
-  });
 }
 
 // ── ПРЯМАЯ / ОБРАТНАЯ ─────────────────────────────────────
@@ -665,10 +596,6 @@ function calcWt() {
     `<span class="hi2">μ</span>=√([pv²]/(n−1))=√(${fnSmart(spv2,4)}/${n-1})=±${fnSmart(mu,5)}<br>` +
     `<span class="hi">m_x̄</span>=μ/√[p]=±${fnSmart(mu,5)}/√${fnSmart(sp,2)}=±${fnSmart(mx,5)}`;
   document.getElementById('wt-result').classList.remove('hidden');
-
-  showMainButton('📤 Отправить результат боту', {
-    type: 'weighted', mean: fnSmart(mean,5), mu: fnSmart(mu,5), mx: fnSmart(mx,5)
-  });
 }
 
 // ── ТАБЛИЦА ЛАПЛАСА ───────────────────────────────────────
@@ -1069,14 +996,6 @@ function calcVed() {
     `<table class="dt"><thead><tr><th>№</th><th>d(м)</th><th>ΔX</th><th>vΔX</th><th>ΔX′</th><th>ΔY</th><th>vΔY</th><th>X</th><th>Y</th></tr></thead><tbody>${cr}</tbody></table>`;
 
   document.getElementById('ved-result').classList.remove('hidden');
-
-  showMainButton('📤 Отправить результат боту', {
-    type: 'coordinate_schedule',
-    fb_sec: fnSmart(fBetaSec,1), fs_m: fnSmart(fs,4),
-    rel: relDen(T),
-    ang_ok: angOk, lin_ok: linOk,
-    coords: coords.map(c => ({ x: fn(c[0],3), y: fn(c[1],3) }))
-  });
 }
 
 // ── СОХРАНЕНИЕ ВВОДА ──────────────────────────────────────
